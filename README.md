@@ -3,7 +3,12 @@
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/e457160fdaf545cc8a031bb14146204c)](https://www.codacy.com/manual/Kurbezz/async_flibusta_bot?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Kurbezz/async_flibusta_bot&amp;utm_campaign=Badge_Grade)
 
 Этот бот для загрузки книг с сайта Флибуста.
-Попробовать можно тут: [@flibusta_rebot](https://www.t.me/flibusta_rebot)
+
+Попробовать можно тут: 
+
+Android: [@flibusta_rebot](https://www.t.me/flibusta_rebot)
+
+IOS: [@flibusta_new_copy_rebot](https://www.t.me/flibusta_new_copy_rebot)
 
 ## Возможности
 * Поиск книг по авторам
