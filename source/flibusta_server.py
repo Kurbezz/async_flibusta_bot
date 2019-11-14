@@ -160,17 +160,15 @@ class Author:
     def to_send(self) -> str:
         result = f'👤 <b>{self.normal_name}</b>\n/a_{self.id}'
         if self.annotation_exists:
-            result += f"\nОб авторе: /a_info_{self.id}\n\n"
-        else:
-            result += "\n\n"
-        return result
+            result += f"\nОб авторе: /a_info_{self.id}"
+        return result + "\n\n"
 
     @staticmethod
     async def by_id(author_id: int, allowed_langs, limit: int, page: int) -> "Author":
         async with aiohttp.request(
                 "GET",
                 f"{Config.FLIBUSTA_SERVER}/author/{author_id}/{json.dumps(allowed_langs)}/{limit}/{page}") as response:
-            if response.status == 204:
+            if response.status != 200:
                 raise NoContent
             return Author(await response.json())
 
@@ -228,12 +226,12 @@ class Book:
     @property
     def caption(self) -> str:
         if not self.authors:
-            return self.title
+            return "📖 " + self.title
 
-        authors_text = '\n'.join([author.normal_name for author in self.authors[:15]])
+        authors_text = '\n'.join(["👤 " + author.normal_name for author in self.authors[:15]])
         if len(self.authors) > 15:
             authors_text += "\n" + "и т.д."
-        return self.title + '\n' + authors_text
+        return "📖 " + self.title + '\n\n' + authors_text
 
     def download_caption(self, file_type) -> str:
         return self.caption + f'\n\n⬇ <a href="{self.get_public_download_link(file_type)}">Скачать</a>'
@@ -517,3 +515,9 @@ class UpdateLog:
             if response.status != 200:
                 return None
             return UpdateLog(await response.json())
+
+
+class Download:
+    @staticmethod
+    async def update(book_id: int, user_id: int):
+        await aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/download_counter/update/{book_id}/{user_id}")

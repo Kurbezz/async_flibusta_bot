@@ -10,7 +10,7 @@ from filters import CallbackDataRegExFilter, InlineQueryRegExFilter, IsTextMessa
 from config import Config
 from flibusta_server import Book, NoContent
 from send import Sender
-from db import *
+from db import TelegramUserDB, SettingsDB, prepare_db
 from utils import ignore, make_settings_keyboard
 
 
@@ -42,20 +42,20 @@ async def help_handler(msg: types.Message):
         await msg.reply(strings.help_msg)
 
 
+@dp.message_handler(commands=["commands"])
+@ignore(exceptions.BotBlocked)
+@ignore(exceptions.BadRequest)
+async def help_commands_handler(msg: types.Message):
+    async with analytics.Analyze("commands", msg):
+        await msg.reply(strings.commands_msg)
+
+
 @dp.message_handler(commands=["info"])
 @ignore(exceptions.BotBlocked)
 @ignore(exceptions.BadRequest)
 async def info_handler(msg: types.Message):
     async with analytics.Analyze("info", msg):
         await msg.reply(strings.info_msg, disable_web_page_preview=True)
-
-
-@dp.message_handler(commands=["vote"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-async def vote_handler(msg: types.Message):
-    async with analytics.Analyze("vote", msg):
-        await msg.reply(strings.vote_msg)
 
 
 @dp.message_handler(commands=["settings"])
@@ -143,6 +143,7 @@ async def donation(msg: types.Message):
 
 @dp.message_handler(regexp=re.compile('^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
 @ignore(exceptions.BotBlocked)
+@dp.async_task
 async def get_book_handler(msg: types.Message):
     async with analytics.Analyze("download", msg):
         file_type, book_id = msg.text.replace('/', '').split('_')
@@ -244,6 +245,7 @@ async def remove_cache(callback: types.CallbackQuery):
 
 
 @dp.message_handler(commands=['update_log'])
+@ignore(exceptions.BotBlocked)
 async def get_update_log_message(msg: types.Message):
     async with analytics.Analyze("get_update_log_message", msg):
         await TelegramUserDB.create_or_update(msg)
