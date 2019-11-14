@@ -1,3 +1,5 @@
+from typing import Optional
+
 import fire
 
 
@@ -15,6 +17,8 @@ class Config:
     FLIBUSTA_SERVER: str
     FLIBUSTA_SERVER_PUBLIC: str
 
+    FLIBUSTA_CHANNEL_SERVER: str
+
     WEBHOOK_PORT: int
     WEBHOOK_HOST: str
 
@@ -23,8 +27,6 @@ class Config:
 
     REDIS_HOST: str
     REDIS_PASSWORD: str
-    
-    FLIBUSTA_BOOKS_CHANNEL_ID: str
 
     CHATBASE_API_KEY: str
 
@@ -35,13 +37,11 @@ class Config:
                  db_password: str,
                  flibusta_server_public: str,
                  server_port: int,
-                 redis_host: str,
-                 redis_password: str,
                  chatbase_api_key: str,
                  webhook_port: int = 8443, server_host: str = "localhost",
                  flibusta_server: str = "http://localhost:7770",
-                 db_host: str = "localhost", db_port: int = 5432,
-                 flibusta_books_channel_id=None):
+                 flibusta_channel_server: str = "http://localhost:7080",
+                 db_host: str = "localhost", db_port: int = 5432):
         cls.BOT_TOKEN = token
         cls.BOT_NAME = bot_name
         
@@ -54,16 +54,13 @@ class Config:
         cls.FLIBUSTA_SERVER = flibusta_server
         cls.FLIBUSTA_SERVER_PUBLIC = flibusta_server_public
 
+        cls.FLIBUSTA_CHANNEL_SERVER = flibusta_channel_server
+
         cls.WEBHOOK_PORT = webhook_port
         cls.WEBHOOK_HOST = f"https://kurbezz.ru:{cls.WEBHOOK_PORT}/{cls.BOT_NAME}"
 
         cls.SERVER_HOST = server_host
         cls.SERVER_PORT = server_port
-
-        cls.REDIS_HOST = redis_host
-        cls.REDIS_PASSWORD = redis_password
-
-        cls.FLIBUSTA_BOOKS_CHANNEL_ID = flibusta_books_channel_id
 
         cls.CHATBASE_API_KEY = chatbase_api_key
 

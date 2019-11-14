@@ -8,13 +8,13 @@ from aiogram import Bot, types, exceptions
 from aiogram.bot import api
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, base
 from aiogram.utils.payload import prepare_file, prepare_arg, generate_payload
-import aioredis
-from flibusta_server import Book, Author, Sequence, BookAnnotation, NoContent, AuthorAnnotation, UpdateLog
-from notifier import Notifier
+import aiohttp
 
 from config import Config
 
-from db import *
+from notifier import Notifier
+from flibusta_server import Book, Author, Sequence, BookAnnotation, NoContent, AuthorAnnotation, UpdateLog, Download
+from db import PostedBook, PostedBookDB, SettingsDB
 
 ELEMENTS_ON_PAGE = 7
 BOOKS_CHANGER = 5
@@ -80,20 +80,18 @@ def need_one_or_more_langs(fn):
     return wrapper
 
 
+async def get_book_from_channel(book_id: int, file_type: str):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{Config.FLIBUSTA_CHANNEL_SERVER}/get_message_id/{book_id}/{file_type}") as response:
+            return await response.json()
+
+
 class Sender:
     bot: Bot
-    redis_connection: aioredis.Redis
 
     @classmethod
     def configure(cls, bot: Bot):
         cls.bot = bot
-        cls.redis_connection = None
-
-    @classmethod
-    async def get_redis_connection(cls):
-        if not cls.redis_connection:
-            cls.redis_connection = await aioredis.create_redis(Config.REDIS_HOST, password=Config.REDIS_PASSWORD)
-        return cls.redis_connection
 
     @classmethod
     async def send_document(cls, chat_id: typing.Union[base.Integer, base.String],
@@ -147,16 +145,7 @@ class Sender:
             except NoContent:
                 await msg.reply("Книга не найдена!")
                 return
-            redis = await cls.get_redis_connection()
-            msg_id = await redis.hget(book_id, file_type)
-            if msg_id:
-                try:
-                    book_msg = await cls.bot.forward_message(chat_id=msg.chat.id,
-                                                   from_chat_id=Config.FLIBUSTA_BOOKS_CHANNEL_ID,
-                                                   message_id=int(msg_id))
-                    return await book_msg.reply(book.caption, reply_markup=book.share_markup_without_cache)
-                except exceptions.MessageToForwardNotFound:
-                    pass  # ToDO: remove message from redis
+            
             pb = await PostedBookDB.get(book_id, file_type)
             if pb:
                 try:
@@ -166,31 +155,43 @@ class Sender:
                     await cls.bot.send_document(msg.chat.id, pb.file_id,
                                                  caption=book.caption, reply_markup=book.share_markup)
             else:
+                book_on_channel = await get_book_from_channel(book_id, file_type)
+
+                if book_on_channel is not None:
+                    try:
+                        send_response = await cls.bot.forward_message(msg.chat.id, book_on_channel["channel_id"], 
+                                                                      book_on_channel["message_id"])
+                        await Download.update(book_id, msg.chat.id)
+                        return
+                    except exceptions.MessageToForwardNotFound:
+                        pass
+
                 book_bytes = await Book.download(book_id, file_type)
                 if not book_bytes:
-                    return await cls.try_reply_or_send_message(msg.chat.id, 
+                    await cls.try_reply_or_send_message(msg.chat.id, 
                                                                "Ошибка! Попробуйте позже :(",
                                                                reply_to_message_id=msg.message_id)
+                    await Download.update(book_id, msg.chat.id)
+                    return
                 if book_bytes.size > 50_000_000:
-                    return await cls.try_reply_or_send_message(
+                    await cls.try_reply_or_send_message(
                         msg.chat.id, 
                         book.download_caption(file_type), parse_mode="HTML",
                         reply_to_message_id=msg.message_id
                     )
+                    await Download.update(book_id, msg.chat.id)
+                    return
                 book_bytes.name = await normalize(book, file_type)
                 try:
                     send_response = await cls.bot.send_document(msg.chat.id, book_bytes,
                                                                 reply_to_message_id=msg.message_id,
                                                                 caption=book.caption, reply_markup=book.share_markup)
-                except exceptions.TelegramAPIError:
-                    return await cls.try_reply_or_send_message(msg.chat.id,
-                                                               "Ошибка! Попробуйте позже :(",
-                                                               reply_to_message_id=msg.message_id)
                 except exceptions.BadRequest:
                     book_bytes = book_bytes.get_copy()
                     send_response = await cls.bot.send_document(msg.chat.id, book_bytes,
                                                                 caption=book.caption, reply_markup=book.share_markup)
                 await PostedBookDB.create_or_update(book_id, file_type, send_response.document.file_id)
+                await Download.update(book_id, msg.chat.id)
 
     @classmethod
     @need_one_or_more_langs
