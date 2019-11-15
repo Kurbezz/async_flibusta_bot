@@ -1,5 +1,3 @@
-# TODO: refactor all
-
 import io
 from typing import List, Optional
 from datetime import date
@@ -7,6 +5,8 @@ from datetime import date
 import aiohttp
 from aiohttp import ClientTimeout, ServerDisconnectedError
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from utils import BytesResult
 
 try:
     import ujson as json
@@ -17,54 +17,139 @@ except ImportError:
 from config import Config
 
 
-class NoContent(Exception):
-    pass
+class Book:
+    def __init__(self, obj: dict):
+        self.obj = obj
 
-
-class BytesResult(io.BytesIO):
-    def __init__(self, content):
-        super().__init__(content)
-        self.content = content
-        self.size = len(content)
-        self._name = None
-
-    def get_copy(self):
-        _copy = BytesResult(self.content)
-        _copy.name = self.name
-        return _copy
+    def __del__(self):
+        del self.obj
 
     @property
-    def name(self):
-        return self._name
+    def id(self):
+        return self.obj["id"]
 
-    @name.setter
-    def name(self, value):
-        self._name = value
+    @property
+    def title(self):
+        return self.obj["title"]
 
+    @property
+    def lang(self):
+        return self.obj["lang"]
 
-class AuthorSearchResult:
-    authors: List["Author"]
+    @property
+    def file_type(self):
+        return self.obj["file_type"]
 
-    def __init__(self, obj: dict):
-        self.count: int = obj["count"]
+    @property
+    def annotation_exists(self):
+        return self.obj["annotation_exists"]
 
-        if self.count != 0:
-            self.authors = [Author(a) for a in obj["result"]]
+    @property
+    def share_markup(self) -> InlineKeyboardMarkup:
+        markup = InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            InlineKeyboardButton("Не открывается!", callback_data=f"remove_cache"),
+            InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
+        )
+        return markup
+
+    @property
+    def share_markup_without_cache(self) -> InlineKeyboardMarkup:
+        markup = InlineKeyboardMarkup(row_width=1)
+        markup.add(
+            InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
+        )
+        return markup
+
+    def get_download_markup(self, file_type: str) -> InlineKeyboardMarkup:
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton('Скачать', url=self.get_download_link(file_type)))
+        return markup
+
+    @property
+    def to_send_book_without_author(self) -> str:
+        res = f'📖 <b>{self.title}</b> | {self.lang}\n'
+        if self.annotation_exists:
+            res += f"Аннотация: /b_info_{self.id}\n"
+        if self.file_type == 'fb2':
+            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
         else:
-            self.authors = []
+            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
 
-    def __bool__(self):
-        return bool(self.count)
+    def get_download_link(self, file_type: str) -> str:
+        return f"{Config.FLIBUSTA_SERVER}/book/download/{self.id}/{file_type}"
+
+    def get_public_download_link(self, file_type: str) -> str:
+        return f"{Config.FLIBUSTA_SERVER_PUBLIC}/book/download/{self.id}/{file_type}"
+
+
+class BookWithAuthor(Book):
+    def __init__(self, obj: dict):
+        Book.__init__(self, obj)
+
+    @property
+    def authors(self):
+        return [Author(a) for a in self.obj["authors"]] if self.obj.get("authors", None) else []
+
+    @property
+    def caption(self) -> str:
+        if not self.authors:
+            return "📖 " + self.title
+
+        authors_text = '\n'.join(["👤 " + author.normal_name for author in self.authors[:15]])
+        if len(self.authors) > 15:
+            authors_text += "\n" + "и т.д."
+        return "📖 " + self.title + '\n\n' + authors_text
+
+    def download_caption(self, file_type) -> str:
+        return self.caption + f'\n\n⬇ <a href="{self.get_public_download_link(file_type)}">Скачать</a>'
+
+    @property
+    def to_send_book(self) -> str:
+        res = f'📖 <b>{self.title}</b> | {self.lang}\n'
+        if self.annotation_exists:
+            res += f"Аннотация: /b_info_{self.id}\n"
+        if self.authors:
+            for a in self.authors[:15]:
+                res += f'👤 <b>{a.normal_name}</b>\n'
+            if len(self.authors) > 15:
+                res += "  и другие\n\n"
+        else:
+            res += '\n'
+        if self.file_type == 'fb2':
+            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
+        else:
+            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
+    
+    @property
+    def short_info(self) -> str:
+        return f"{self.title} \n {' '.join([a.short for a in self.authors])}"
+
+    @property
+    def share_text(self) -> str:
+        basic_url = f"https://www.t.me/{Config.BOT_NAME}?start="
+        res = f'*{self.title}* | {self.lang}\n'
+        if self.authors:
+            for a in self.authors:
+                res += f'*{a.normal_name}*\n'
+        else:
+            res += '\n'
+        if self.file_type == 'fb2':
+            return res + (f'⬇ [Скачать fb2]({basic_url + "fb2_" + str(self.id)}) \n'
+                          f'⬇ [Скачать epub]({basic_url + "epub_" + str(self.id)}) \n'
+                          f'⬇ [Скачать mobi]({basic_url + "mobi_" + str(self.id)})')
+        else:
+            return res + f'⬇ [Скачать {self.file_type}]({basic_url + self.file_type + "_" + str(self.id)})'
 
 
 class BookSearchResult:
-    books: List["Book"]
+    books: List[BookWithAuthor]
 
     def __init__(self, obj: dict):
         self.count: int = obj["count"]
 
         if self.count != 0:
-            self.books = [Book(b) for b in obj["result"]]
+            self.books = [BookWithAuthor(b) for b in obj["result"]]
         else:
             self.books = []
 
@@ -72,35 +157,51 @@ class BookSearchResult:
         return bool(self.count)
 
 
-class SequenceSearchResult:
-    sequences: List['Sequence']
+class BookAPI:
+    @staticmethod
+    async def download(book_id: int, file_type: str) -> Optional[BytesResult]:
+        try:
+            async with aiohttp.ClientSession(timeout=ClientTimeout(total=600)) as session:
+                async with session.get(f"{Config.FLIBUSTA_SERVER}/book/download/{book_id}/{file_type}",
+                                       timeout=None) as response:
+                    if response.status != 200:
+                        return None
+                    return BytesResult(await response.content.read())
+        except ServerDisconnectedError:
+            return None
+    
+    @staticmethod
+    async def get_by_id(book_id: int) -> Optional[BookWithAuthor]:
+        async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/book/{book_id}") as response:
+            if response.status != 200:
+                return None
+            return BookWithAuthor(await response.json())
 
-    def __init__(self, obj: dict):
-        self.count: int = obj["count"]
+    @staticmethod
+    async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[BookSearchResult]:
+        async with aiohttp.request(
+            "GET",
+                f"{Config.FLIBUSTA_SERVER}/book/search/{json.dumps(allowed_langs)}/{limit}/{page}/{query}"
+        ) as response:
+            if response.status != 200:
+                return None
+            return BookSearchResult(await response.json())
 
-        if self.count != 0:
-            self.sequences = [Sequence(s) for s in obj["result"]]
-        else:
-            self.sequences = []
-
-    def __bool__(self):
-        return self.count != 0
+    @staticmethod
+    async def get_random(allowed_langs: List[str]) -> Optional[BookWithAuthor]:
+        async with aiohttp.request("GET", 
+                                   f"{Config.FLIBUSTA_SERVER}/book/random/{json.dumps(allowed_langs)}") as response:
+            if response.status != 200:
+                return None
+            return BookWithAuthor(await response.json())
 
 
 class Author:
     def __init__(self, obj: dict):
-        self.count = obj.get("count", None)
-
-        if obj.get("result", None) is None:
-            self.obj = obj
-        else:
-            self.obj = obj["result"]
+        self.obj = obj
 
     def __del__(self):
         del self.obj
-
-    def __bool__(self):
-        return self.count != 0
 
     @property
     def id(self):
@@ -121,10 +222,6 @@ class Author:
     @property
     def annotation_exists(self):
         return self.obj["annotation_exists"]
-
-    @property
-    def books(self):
-        return [Book(x) for x in self.obj["books"]] if self.obj.get("books", None) else []
 
     @property
     def normal_name(self) -> str:
@@ -163,14 +260,45 @@ class Author:
             result += f"\nОб авторе: /a_info_{self.id}"
         return result + "\n\n"
 
+
+class AuthorWithBooks(Author):
+    def __init__(self, obj: dict):
+        Author.__init__(self, obj["result"])
+
+        self.count = obj.get("count", None)
+    
+    def __bool__(self):
+        return self.count != 0
+
+    @property
+    def books(self):
+        return [Book(x) for x in self.obj["books"]] if self.obj.get("books", None) else []
+
+
+class AuthorSearchResult:
+    authors: List["Author"]
+
+    def __init__(self, obj: dict):
+        self.count: int = obj["count"]
+
+        if self.count != 0:
+            self.authors = [Author(a) for a in obj["result"]]
+        else:
+            self.authors = []
+
+    def __bool__(self):
+        return bool(self.count)
+
+
+class AuthorAPI:
     @staticmethod
-    async def by_id(author_id: int, allowed_langs, limit: int, page: int) -> "Author":
+    async def by_id(author_id: int, allowed_langs, limit: int, page: int) -> Optional[AuthorWithBooks]:
         async with aiohttp.request(
                 "GET",
                 f"{Config.FLIBUSTA_SERVER}/author/{author_id}/{json.dumps(allowed_langs)}/{limit}/{page}") as response:
             if response.status != 200:
-                raise NoContent
-            return Author(await response.json())
+                return None
+            return AuthorWithBooks(await response.json())
 
     @staticmethod
     async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[AuthorSearchResult]:
@@ -183,179 +311,18 @@ class Author:
             return AuthorSearchResult(await response.json())
 
     @staticmethod
-    async def get_random(allowed_langs: List[str]) -> "Author":
+    async def get_random(allowed_langs: List[str]) -> Optional[Author]:
         async with aiohttp.request(
                 "GET",
                 f"{Config.FLIBUSTA_SERVER}/author/random/{json.dumps(allowed_langs)}") as response:
             if response.status != 200:
-                raise NoContent
+                return None
             return Author(await response.json())
 
 
-class Book:
-    def __init__(self, obj: dict):
-        self.obj = obj
-
-    def __del__(self):
-        del self.obj
-
-    @property
-    def id(self):
-        return self.obj["id"]
-
-    @property
-    def title(self):
-        return self.obj["title"]
-
-    @property
-    def lang(self):
-        return self.obj["lang"]
-
-    @property
-    def file_type(self):
-        return self.obj["file_type"]
-
-    @property
-    def annotation_exists(self):
-        return self.obj["annotation_exists"]
-
-    @property
-    def authors(self):
-        return [Author(a) for a in self.obj["authors"]] if self.obj.get("authors", None) else None
-
-    @property
-    def caption(self) -> str:
-        if not self.authors:
-            return "📖 " + self.title
-
-        authors_text = '\n'.join(["👤 " + author.normal_name for author in self.authors[:15]])
-        if len(self.authors) > 15:
-            authors_text += "\n" + "и т.д."
-        return "📖 " + self.title + '\n\n' + authors_text
-
-    def download_caption(self, file_type) -> str:
-        return self.caption + f'\n\n⬇ <a href="{self.get_public_download_link(file_type)}">Скачать</a>'
-
-    @property
-    def short_info(self) -> str:
-        return f"{self.title} \n {' '.join([a.short for a in self.authors])}"
-
-    @property
-    def share_text(self) -> str:
-        basic_url = f"https://www.t.me/{Config.BOT_NAME}?start="
-        res = f'*{self.title}* | {self.lang}\n'
-        if self.authors:
-            for a in self.authors:
-                res += f'*{a.normal_name}*\n'
-        else:
-            res += '\n'
-        if self.file_type == 'fb2':
-            return res + (f'⬇ [Скачать fb2]({basic_url + "fb2_" + str(self.id)}) \n'
-                          f'⬇ [Скачать epub]({basic_url + "epub_" + str(self.id)}) \n'
-                          f'⬇ [Скачать mobi]({basic_url + "mobi_" + str(self.id)})')
-        else:
-            return res + f'⬇ [Скачать {self.file_type}]({basic_url + self.file_type + "_" + str(self.id)})'
-
-    @property
-    def share_markup(self) -> InlineKeyboardMarkup:
-        markup = InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            InlineKeyboardButton("Не открывается!", callback_data=f"remove_cache"),
-            InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
-        )
-        return markup
-
-    @property
-    def share_markup_without_cache(self) -> InlineKeyboardMarkup:
-        markup = InlineKeyboardMarkup(row_width=1)
-        markup.add(
-            InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
-        )
-        return markup
-
-    def get_download_markup(self, file_type: str) -> InlineKeyboardMarkup:
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton('Скачать', url=self.get_download_link(file_type)))
-        return markup
-
-    @property
-    def to_send_book(self) -> str:
-        res = f'📖 <b>{self.title}</b> | {self.lang}\n'
-        if self.annotation_exists:
-            res += f"Аннотация: /b_info_{self.id}\n"
-        if self.authors:
-            for a in self.authors[:15]:
-                res += f'👤 <b>{a.normal_name}</b>\n'
-            if len(self.authors) > 15:
-                res += "  и другие\n\n"
-        else:
-            res += '\n'
-        if self.file_type == 'fb2':
-            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
-        else:
-            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
-
-    @property
-    def to_send_book_without_author(self) -> str:
-        res = f'📖 <b>{self.title}</b> | {self.lang}\n'
-        if self.annotation_exists:
-            res += f"Аннотация: /b_info_{self.id}\n"
-        if self.file_type == 'fb2':
-            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
-        else:
-            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
-
-    @staticmethod
-    async def get_by_id(book_id: int) -> "Book":
-        async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/book/{book_id}") as response:
-            if response.status == 204:
-                raise NoContent
-            return Book(await response.json())
-
-    @staticmethod
-    async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[BookSearchResult]:
-        async with aiohttp.request(
-            "GET",
-                f"{Config.FLIBUSTA_SERVER}/book/search/{json.dumps(allowed_langs)}/{limit}/{page}/{query}"
-        ) as response:
-            if response.status != 200:
-                return None
-            return BookSearchResult(await response.json())
-
-    @staticmethod
-    async def get_random(allowed_langs: List[str]) -> "Book":
-        async with aiohttp.request("GET", 
-                                   f"{Config.FLIBUSTA_SERVER}/book/random/{json.dumps(allowed_langs)}") as response:
-            if response.status != 200:
-                raise NoContent
-            return Book(await response.json())
-
-    def get_download_link(self, file_type: str) -> str:
-        return f"{Config.FLIBUSTA_SERVER}/book/download/{self.id}/{file_type}"
-
-    def get_public_download_link(self, file_type: str) -> str:
-        return f"{Config.FLIBUSTA_SERVER_PUBLIC}/book/download/{self.id}/{file_type}"
-
-    @staticmethod
-    async def download(book_id: int, file_type: str) -> Optional[BytesResult]:
-        try:
-            async with aiohttp.ClientSession(timeout=ClientTimeout(total=600)) as session:
-                async with session.get(f"{Config.FLIBUSTA_SERVER}/book/download/{book_id}/{file_type}",
-                                       timeout=None) as response:
-                    if response.status != 200:
-                        return None
-                    return BytesResult(await response.content.read())
-        except ServerDisconnectedError:
-            return None
-
-
 class Sequence:
-    def __init__(self, obj, count=None):
+    def __init__(self, obj):
         self.obj = obj
-        self.count = count
-
-    def __bool__(self):
-        return self.count != 0
 
     @property
     def id(self):
@@ -365,12 +332,27 @@ class Sequence:
     def name(self):
         return self.obj['name']
 
+
+class SequenceWithBooks(Sequence):
+    def __init__(self, obj: dict):
+        Sequence.__init__(self, obj["result"])
+
+        self.count = obj["count"]
+
+    def __bool__(self):
+        return self.count != 0
+
     @property
-    def books(self) -> List[Book]:
+    def books(self) -> List[BookWithAuthor]:
         if not self.obj:
             return []
-        return [Book(x) for x in self.obj['books']] if self.obj['books'] else []
+        return [BookWithAuthor(x) for x in self.obj['books']] if self.obj['books'] else []
 
+
+class SequenceWithAuthors(Sequence):
+    def __init__(self, obj: dict):
+        Sequence.__init__(self, obj)
+    
     @property
     def authors(self) -> List[Author]:
         return [Author(x) for x in self.obj['authors']] if self.obj['authors'] else []
@@ -382,21 +364,38 @@ class Sequence:
             for a in self.authors[:5]:
                 res += f'👤 <b>{a.normal_name}</b>\n'
             if len(self.authors) > 5:
-                res += "<b> и другие</b>\n\n"
+                res += "<b> и другие</b>\n"
         else:
             res += '\n'
         res += f'/s_{self.id}\n\n'
         return res
 
+
+class SequenceSearchResult:
+    sequences: List[SequenceWithAuthors]
+
+    def __init__(self, obj: dict):
+        self.count: int = obj["count"]
+
+        if self.count != 0:
+            self.sequences = [SequenceWithAuthors(s) for s in obj["result"]]
+        else:
+            self.sequences = []
+
+    def __bool__(self):
+        return self.count != 0
+
+
+class SequenceAPI:
     @staticmethod
-    async def get_by_id(seq_id: int, allowed_langs: List[str], limit: int, page: int) -> 'Sequence':
+    async def get_by_id(seq_id: int, allowed_langs: List[str], limit: int, page: int) -> Optional[SequenceWithBooks]:
         async with aiohttp.request(
                 "GET",
                 f"{Config.FLIBUSTA_SERVER}/sequence/{seq_id}/{json.dumps(allowed_langs)}/{limit}/{page}") as response:
             if response.status != 200:
-                return Sequence(None, 0)
+                return None
             response_json = await response.json()
-            return Sequence(response_json["result"], response_json["count"])
+            return SequenceWithBooks(response_json)
 
     @staticmethod
     async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[SequenceSearchResult]:
@@ -409,12 +408,12 @@ class Sequence:
             return SequenceSearchResult(await response.json())
 
     @staticmethod
-    async def get_random(allowed_langs: List[str]) -> "Sequence":
+    async def get_random(allowed_langs: List[str]) -> Optional[SequenceWithAuthors]:
         async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/sequence/random/{json.dumps(allowed_langs)}"
                                    ) as response:
             if response.status != 200:
-                raise NoContent
-            return Sequence(await response.json())
+                return None
+            return SequenceWithAuthors(await response.json())
 
 
 class BookAnnotation:
@@ -445,11 +444,13 @@ class BookAnnotation:
     def to_send(self):
         return f"{self.title} {self.body}"
 
+
+class BookAnnotationAPI:
     @staticmethod
-    async def get_by_book_id(book_id: int):
+    async def get_by_book_id(book_id: int) -> Optional[BookAnnotation]:
         async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/annotation/book/{book_id}") as response:
             if response.status != 200:
-                raise NoContent
+                return None
             return BookAnnotation(await response.json())
 
 
@@ -481,43 +482,48 @@ class AuthorAnnotation:
     def to_send(self):
         return f"{self.title} {self.body}"
 
+
+class AuthorAnnotationAPI:
     @staticmethod
-    async def get_by_author_id(book_id: int):
+    async def get_by_author_id(book_id: int) -> Optional[AuthorAnnotation]:
         async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/annotation/author/{book_id}") as response:
             if response.status != 200:
-                raise NoContent
+                return None
             return AuthorAnnotation(await response.json())
 
 
 class UpdateLog:
-    books: List[Book]
+    books: List[BookWithAuthor]
 
     def __init__(self, obj: dict):
         self.count = obj['count']
 
         if self.count != 0:
-            self.books = [Book(b) for b in obj["result"]]
+            self.books = [BookWithAuthor(b) for b in obj["result"]]
         else:
             self.books = []
     
     def __bool__(self):
         return self.count != 0
 
+
+class UpdateLogAPI:
     @staticmethod
     async def get_by_day(start_date: date, end_date: date, 
-                         allowed_langs: List[str], limit: int, page: int) -> Optional["UpdateLog"]:
-        start_date = start_date.isoformat()
-        end_date = end_date.isoformat()
+                         allowed_langs: List[str], limit: int, page: int) -> Optional[UpdateLog]:
+        start_date_d = start_date.isoformat()
+        end_date_d = end_date.isoformat()
         async with aiohttp.request(
             "GET", 
-            f"{Config.FLIBUSTA_SERVER}/book/update_log_range/{start_date}/{end_date}/{json.dumps(allowed_langs)}/{limit}/{page}"
+            f"{Config.FLIBUSTA_SERVER}/book/update_log_range/{start_date_d}/{end_date_d}/{json.dumps(allowed_langs)}/{limit}/{page}"
                 ) as response:
             if response.status != 200:
                 return None
             return UpdateLog(await response.json())
 
 
-class Download:
+class DownloadAPI:
     @staticmethod
     async def update(book_id: int, user_id: int):
-        await aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/download_counter/update/{book_id}/{user_id}")
+        async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/download_counter/update/{book_id}/{user_id}") as resp:
+            pass

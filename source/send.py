@@ -13,7 +13,8 @@ import aiohttp
 from config import Config
 
 from notifier import Notifier
-from flibusta_server import Book, Author, Sequence, BookAnnotation, NoContent, AuthorAnnotation, UpdateLog, Download
+from flibusta_server import BookAPI, DownloadAPI, AuthorAPI, SequenceAPI, BookAnnotationAPI, AuthorAnnotationAPI, UpdateLogAPI
+from flibusta_server import BookWithAuthor
 from db import PostedBook, PostedBookDB, SettingsDB
 
 ELEMENTS_ON_PAGE = 7
@@ -48,7 +49,7 @@ async def get_keyboard(page: int, pages_count: int, keyboard_type: str) -> Optio
     return keyboard
 
 
-async def normalize(book: Book, file_type: str) -> str:  # remove chars that don't accept in Telegram Bot API
+async def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove chars that don't accept in Telegram Bot API
     filename = '_'.join([a.short for a in book.authors]) + '_-_' if book.authors else ''
     filename += book.title if book.title[-1] != ' ' else book.title[:-1]
     filename = transliterate.translit(filename, 'ru', reversed=True)
@@ -140,9 +141,9 @@ class Sender:
     @classmethod
     async def send_book(cls, msg: Message, book_id: int, file_type: str):
         async with Notifier(cls.bot, msg.chat.id, "upload_document"):
-            try:
-                book = await Book.get_by_id(book_id)
-            except NoContent:
+            book = await BookAPI.get_by_id(book_id)
+
+            if book is None:
                 await msg.reply("Книга не найдена!")
                 return
             
@@ -161,17 +162,17 @@ class Sender:
                     try:
                         send_response = await cls.bot.forward_message(msg.chat.id, book_on_channel["channel_id"], 
                                                                       book_on_channel["message_id"])
-                        await Download.update(book_id, msg.chat.id)
+                        await DownloadAPI.update(book_id, msg.chat.id)
                         return
                     except exceptions.MessageToForwardNotFound:
                         pass
 
-                book_bytes = await Book.download(book_id, file_type)
+                book_bytes = await BookAPI.download(book_id, file_type)
                 if not book_bytes:
                     await cls.try_reply_or_send_message(msg.chat.id, 
                                                                "Ошибка! Попробуйте позже :(",
                                                                reply_to_message_id=msg.message_id)
-                    await Download.update(book_id, msg.chat.id)
+                    await DownloadAPI.update(book_id, msg.chat.id)
                     return
                 if book_bytes.size > 50_000_000:
                     await cls.try_reply_or_send_message(
@@ -179,7 +180,7 @@ class Sender:
                         book.download_caption(file_type), parse_mode="HTML",
                         reply_to_message_id=msg.message_id
                     )
-                    await Download.update(book_id, msg.chat.id)
+                    await DownloadAPI.update(book_id, msg.chat.id)
                     return
                 book_bytes.name = await normalize(book, file_type)
                 try:
@@ -191,18 +192,25 @@ class Sender:
                     send_response = await cls.bot.send_document(msg.chat.id, book_bytes,
                                                                 caption=book.caption, reply_markup=book.share_markup)
                 await PostedBookDB.create_or_update(book_id, file_type, send_response.document.file_id)
-                await Download.update(book_id, msg.chat.id)
+                await DownloadAPI.update(book_id, msg.chat.id)
 
     @classmethod
     @need_one_or_more_langs
     async def search_books(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await Book.search(msg.reply_to_message.text,
+        search_result = await BookAPI.search(msg.reply_to_message.text,
                                           (await SettingsDB.get(msg.chat.id)).get(), 
                                           ELEMENTS_ON_PAGE, page)
+
+        if search_result is None:
+            await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
+                                            chat_id=msg.chat.id, message_id=msg.message_id)
+            return
+
         if not search_result:
             await cls.bot.edit_message_text('Книги не найдены!', chat_id=msg.chat.id, message_id=msg.message_id)
             return
+
         page_count = search_result.count // ELEMENTS_ON_PAGE + (1 if search_result.count % ELEMENTS_ON_PAGE != 0 else 0)
         msg_text = ''.join(book.to_send_book for book in search_result.books) \
                    + f'<code>Страница {page}/{page_count}</code>'
@@ -213,12 +221,19 @@ class Sender:
     @need_one_or_more_langs
     async def search_authors(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await Author.search(msg.reply_to_message.text, 
+        search_result = await AuthorAPI.search(msg.reply_to_message.text, 
                                             (await SettingsDB.get(msg.chat.id)).get(), 
                                             ELEMENTS_ON_PAGE, page)
+
+        if search_result is None:
+            await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
+                                            chat_id=msg.chat.id, message_id=msg.message_id)
+            return
+
         if not search_result:
             await cls.bot.edit_message_text('Автор не найден!', chat_id=msg.chat.id, message_id=msg.message_id)
             return
+
         page_max = search_result.count // ELEMENTS_ON_PAGE + (1 if search_result.count % ELEMENTS_ON_PAGE != 0 else 0)
         msg_text = ''.join(author.to_send for author in search_result.authors) \
                    + f'<code>Страница {page}/{page_max}</code>'
@@ -229,10 +244,13 @@ class Sender:
     @need_one_or_more_langs
     async def search_books_by_author(cls, msg: Message, author_id: int, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        try:
-            author = await Author.by_id(author_id, (await SettingsDB.get(msg.chat.id)).get(), ELEMENTS_ON_PAGE, page)
-        except NoContent:
-            return await msg.reply("Автор не найден!")
+
+        author = await AuthorAPI.by_id(author_id, (await SettingsDB.get(msg.chat.id)).get(), ELEMENTS_ON_PAGE, page)
+
+        if author is None:
+            await msg.reply("Автор не найден!")
+            return
+    
         books = author.books
         if not books:
             await msg.reply('Ошибка! Книги не найдены!')
@@ -258,9 +276,15 @@ class Sender:
     @need_one_or_more_langs
     async def search_series(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        sequences_result = await Sequence.search(msg.reply_to_message.text, 
+        sequences_result = await SequenceAPI.search(msg.reply_to_message.text, 
                                                  (await SettingsDB.get(msg.chat.id)).get(), 
                                                  ELEMENTS_ON_PAGE, page)
+
+        if sequences_result is None:
+            await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
+                                            chat_id=msg.chat.id, message_id=msg.message_id)
+            return
+
         if not sequences_result:
             return await cls.try_reply_or_send_message(msg.chat.id, 'Ошибка! Серии не найдены!',
                                                        reply_to_message_id=msg.message_id)
@@ -275,7 +299,13 @@ class Sender:
     @need_one_or_more_langs
     async def search_books_by_series(cls, msg: Message, series_id: int, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await Sequence.get_by_id(series_id, (await SettingsDB.get(msg.chat.id)).get(), ELEMENTS_ON_PAGE, page)
+        search_result = await SequenceAPI.get_by_id(series_id, (await SettingsDB.get(msg.chat.id)).get(), ELEMENTS_ON_PAGE, page)
+
+        if search_result is None:
+            await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
+                                            chat_id=msg.chat.id, message_id=msg.message_id)
+            return
+
         books = search_result.books
         if not books:
             return await cls.try_reply_or_send_message(msg.chat.id, 'Ошибка! Книги в серии не найдены!',
@@ -296,99 +326,111 @@ class Sender:
     @need_one_or_more_langs
     async def get_random_book(cls, msg: Message):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        try:
-            book = await Book.get_random((await SettingsDB.get(msg.chat.id)).get())
-            await cls.try_reply_or_send_message(msg.chat.id, book.to_send_book, parse_mode='HTML',
-                                                reply_to_message_id=msg.message_id)
-        except NoContent:
+
+        book = await BookAPI.get_random((await SettingsDB.get(msg.chat.id)).get())
+        if book is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Пока бот не может это сделать, но скоро это исправят!")
+            return
+
+        await cls.try_reply_or_send_message(msg.chat.id, book.to_send_book, parse_mode='HTML',
+                                            reply_to_message_id=msg.message_id)
 
     @classmethod
     @need_one_or_more_langs
     async def get_random_author(cls, msg: Message):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        try:
-            author = await Author.get_random((await SettingsDB.get(msg.chat.id)).get())
-            await cls.try_reply_or_send_message(msg.chat.id, author.to_send, parse_mode='HTML',
-                                                reply_to_message_id=msg.message_id)
-        except NoContent:
+
+        author = await AuthorAPI.get_random((await SettingsDB.get(msg.chat.id)).get())
+        if author is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Пока бот не может это сделать, но скоро это исправят!")
+            return
+
+        await cls.try_reply_or_send_message(msg.chat.id, author.to_send, parse_mode='HTML',
+                                            reply_to_message_id=msg.message_id)
+            
 
     @classmethod
     @need_one_or_more_langs
     async def get_random_sequence(cls, msg: Message):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        try:
-            sequence = await Sequence.get_random((await SettingsDB.get(msg.chat.id)).get())
-            await cls.try_reply_or_send_message(msg.chat.id, sequence.to_send, parse_mode="HTML",
-                                                reply_to_message_id=msg.message_id)
-        except NoContent:
+
+        sequence = await SequenceAPI.get_random((await SettingsDB.get(msg.chat.id)).get())
+        if sequence is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Пока бот не может это сделать, но скоро это исправят!")
+            return
+
+        await cls.try_reply_or_send_message(msg.chat.id, sequence.to_send, parse_mode="HTML",
+                                            reply_to_message_id=msg.message_id)
 
     @classmethod
     @need_one_or_more_langs
     async def send_book_annotation(cls, msg: Message, book_id: int):
-        try:
-            await cls.bot.send_chat_action(msg.chat.id, 'typing')
-            annotation = await BookAnnotation.get_by_book_id(book_id)
-            if annotation.photo_link:
-                msg = await cls.bot.send_photo(msg.chat.id, annotation.photo_link,
-                                               caption=annotation.to_send[:1024], parse_mode="HTML",
-                                               reply_to_message_id=msg.message_id)
-                if len(annotation.to_send) > 1024:
-                    i = 1024
-                    while annotation.to_send[i:i + 4096]:
-                        msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                  reply_to_message_id=msg.message_id)
-                        i += len(msg.text)
-            else:
-                msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
-                                                          reply_to_message_id=msg.message_id)
-                if len(annotation.to_send) > 4096:
-                    i = 4096
-                    while annotation.to_send[i:i + 4096]:
-                        msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                  reply_to_message_id=msg.message_id)
-                        i += len(msg.text)
-        except NoContent:
+        await cls.bot.send_chat_action(msg.chat.id, 'typing')
+
+        annotation = await BookAnnotationAPI.get_by_book_id(book_id)
+
+        if annotation is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Нет аннотации для этой книги!",
-                                                reply_to_message_id=msg.message_id)
+                                            reply_to_message_id=msg.message_id)
+            return
+
+        if annotation.photo_link:
+            msg = await cls.bot.send_photo(msg.chat.id, annotation.photo_link,
+                                            caption=annotation.to_send[:1024], parse_mode="HTML",
+                                            reply_to_message_id=msg.message_id)
+            if len(annotation.to_send) > 1024:
+                i = 1024
+                while annotation.to_send[i:i + 4096]:
+                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
+                                                                reply_to_message_id=msg.message_id)
+                    i += len(msg.text)
+        else:
+            msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
+                                                        reply_to_message_id=msg.message_id)
+            if len(annotation.to_send) > 4096:
+                i = 4096
+                while annotation.to_send[i:i + 4096]:
+                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
+                                                                reply_to_message_id=msg.message_id)
+                    i += len(msg.text)
 
 
     @classmethod
     @need_one_or_more_langs
     async def send_author_annotation(cls, msg: Message, author_id: int):
-        try:
-            await cls.bot.send_chat_action(msg.chat.id, 'typing')
-            annotation = await AuthorAnnotation.get_by_author_id(author_id)
-            if annotation.photo_link:
-                await cls.try_reply_or_send_photo(msg.chat.id, annotation.photo_link,
-                                                  caption=annotation.to_send[:1024], parse_mode="HTML",
-                                                  reply_to_message_id=msg.message_id)
-                if len(annotation.to_send) > 1024:
-                    i = 1024
-                    while annotation.to_send[i:i + 4096]:
-                        msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                  reply_to_message_id=msg.message_id)
-                        i += len(msg.text)
-            else:
-                await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
-                                                    reply_to_message_id=msg.message_id)
-                if len(annotation.to_send) > 4096:
-                    i = 4096
-                    while annotation.to_send[i:i + 4096]:
-                        msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                  reply_to_message_id=msg.message_id)
-                        i += len(msg.text)
-        except NoContent:
+        await cls.bot.send_chat_action(msg.chat.id, 'typing')
+
+        annotation = await AuthorAnnotationAPI.get_by_author_id(author_id)
+        if annotation is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Нет информации для этого автора!",
                                                 reply_to_message_id=msg.message_id)
+            return
+
+        if annotation.photo_link:
+            await cls.try_reply_or_send_photo(msg.chat.id, annotation.photo_link,
+                                                caption=annotation.to_send[:1024], parse_mode="HTML",
+                                                reply_to_message_id=msg.message_id)
+            if len(annotation.to_send) > 1024:
+                i = 1024
+                while annotation.to_send[i:i + 4096]:
+                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
+                                                                reply_to_message_id=msg.message_id)
+                    i += len(msg.text)
+        else:
+            await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
+                                                reply_to_message_id=msg.message_id)
+            if len(annotation.to_send) > 4096:
+                i = 4096
+                while annotation.to_send[i:i + 4096]:
+                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
+                                                                reply_to_message_id=msg.message_id)
+                    i += len(msg.text)
 
 
     @classmethod
     @need_one_or_more_langs
     async def send_day_update_log(cls, msg: types.Message, start_date: date, end_date: date, page: int, type_: str):
-        update_log = await UpdateLog.get_by_day(start_date, end_date, (await SettingsDB.get(msg.chat.id)).get(), 7, page)
+        update_log = await UpdateLogAPI.get_by_day(start_date, end_date, (await SettingsDB.get(msg.chat.id)).get(), 7, page)
         if not update_log:
             await cls.bot.edit_message_text('Обновления не найдены!', chat_id=msg.chat.id, message_id=msg.message_id)
             return

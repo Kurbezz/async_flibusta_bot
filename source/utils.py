@@ -4,6 +4,7 @@ import asyncio
 from aiogram import types
 
 from functools import wraps
+import io
 
 
 def ignore(exception):
@@ -42,3 +43,24 @@ async def make_settings_keyboard(user_id: int) -> types.InlineKeyboardMarkup:
     else:
         keyboard.row(types.InlineKeyboardButton("Белорусский: ✅ включен!", callback_data="be_off"))
     return keyboard
+
+
+class BytesResult(io.BytesIO):
+    def __init__(self, content):
+        super().__init__(content)
+        self.content = content
+        self.size = len(content)
+        self._name = None
+
+    def get_copy(self):
+        _copy = BytesResult(self.content)
+        _copy.name = self.name
+        return _copy
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self._name = value

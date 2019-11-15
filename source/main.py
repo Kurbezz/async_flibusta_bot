@@ -8,7 +8,7 @@ import analytics
 import strings
 from filters import CallbackDataRegExFilter, InlineQueryRegExFilter, IsTextMessageFilter
 from config import Config
-from flibusta_server import Book, NoContent
+from flibusta_server import BookAPI
 from send import Sender
 from db import TelegramUserDB, SettingsDB, prepare_db
 from utils import ignore, make_settings_keyboard
@@ -292,11 +292,14 @@ async def search(msg: types.Message):
 @dp.inline_handler(InlineQueryRegExFilter(r'^share_([\d]+)$'))
 @ignore(exceptions.BotBlocked)
 @ignore(exceptions.InvalidQueryID)
-@ignore(NoContent)
 async def share_book(query: types.InlineQuery):
     async with analytics.Analyze("share_book", query):
         book_id = int(query.query.split("_")[1])
-        book = await Book.get_by_id(book_id)
+        book = await BookAPI.get_by_id(book_id)
+
+        if book is None:
+            return
+
         await bot.answer_inline_query(query.id, [types.InlineQueryResultArticle(
             id=str(query.query),
             title=strings.share,
