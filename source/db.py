@@ -54,11 +54,12 @@ class TelegramUserDB(ConfigurableDB):
 
 
 class Settings:
-    def __init__(self, user_id: int, allow_ru: bool, allow_be: bool, allow_uk):
+    def __init__(self, user_id: int, allow_ru: bool, allow_be: bool, allow_uk: bool, beta_testing: bool):
         self.user_id: int = user_id
         self.allow_ru: bool = allow_ru
         self.allow_be: bool = allow_be
         self.allow_uk: bool = allow_uk
+        self.beta_testing: bool = beta_testing
 
     def get(self) -> List[str]:
         result: List[str] = []
@@ -72,19 +73,21 @@ class Settings:
 
 
 class SettingsDB(ConfigurableDB):
-    GET= open(SQL_FOLDER / "settings_get.sql").read()
+    GET = open(SQL_FOLDER / "settings_get.sql").read()
     UPDATE = open(SQL_FOLDER / "settings_update.sql").read()
 
     @classmethod
     async def get(cls, user_id: int) -> Settings:
         result = await cls.pool.fetch(cls.GET, user_id)
         if not result:
-            return Settings(user_id, True, False, False)
-        return Settings(user_id, result[0]["allow_ru"], result[0]["allow_be"], result[0]["allow_uk"])
+            return Settings(user_id, True, False, False, False)
+        return Settings(user_id, result[0]["allow_ru"], result[0]["allow_be"], 
+                        result[0]["allow_uk"], result[0]["beta_testing"])
 
     @classmethod
     async def update(cls, settings: Settings):
-        await cls.pool.execute(cls.UPDATE, settings.user_id, settings.allow_ru, settings.allow_be, settings.allow_uk)
+        await cls.pool.execute(cls.UPDATE, settings.user_id, settings.allow_ru,
+                               settings.allow_be, settings.allow_uk, settings.beta_testing)
 
 
 class PostedBook:

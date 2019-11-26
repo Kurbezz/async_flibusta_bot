@@ -16,12 +16,14 @@ from notifier import Notifier
 from flibusta_server import BookAPI, DownloadAPI, AuthorAPI, SequenceAPI, BookAnnotationAPI, AuthorAnnotationAPI, UpdateLogAPI
 from flibusta_server import BookWithAuthor
 from db import PostedBook, PostedBookDB, SettingsDB
+from utils import split_text
 
 ELEMENTS_ON_PAGE = 7
 BOOKS_CHANGER = 5
 
 
-async def get_keyboard(page: int, pages_count: int, keyboard_type: str) -> Optional[InlineKeyboardMarkup]:
+async def get_keyboard(page: int, pages_count: int, keyboard_type: str, 
+                       only_one: bool = False) -> Optional[InlineKeyboardMarkup]:
     if pages_count == 1:
         return None
     keyboard = InlineKeyboardMarkup()
@@ -31,20 +33,22 @@ async def get_keyboard(page: int, pages_count: int, keyboard_type: str) -> Optio
 
     if page > 1:
         prev_page = max(1, page - BOOKS_CHANGER)
-        if prev_page != page - 1:
+        if prev_page != page - 1 and not only_one:
             second_row.append(InlineKeyboardButton(f'<< {prev_page}',
                                                    callback_data=f'{keyboard_type}_{prev_page}'))
         first_row.append(InlineKeyboardButton('<', callback_data=f'{keyboard_type}_{page - 1}'))
 
     if page != pages_count:
         next_page = min(pages_count, page + BOOKS_CHANGER)
-        if next_page != page + 1:
+        if next_page != page + 1 and not only_one:
             second_row.append(InlineKeyboardButton(f'>> {next_page}',
                                                    callback_data=f'{keyboard_type}_{next_page}'))
         first_row.append(InlineKeyboardButton('>', callback_data=f'{keyboard_type}_{page + 1}'))
 
-    keyboard.row(*first_row)
-    keyboard.row(*second_row)
+    if first_row:
+        keyboard.row(*first_row)
+    if second_row:
+        keyboard.row(*second_row)
 
     return keyboard
 
@@ -66,18 +70,19 @@ async def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove char
 def need_one_or_more_langs(fn):
     @wraps(fn)
     async def wrapper(*args, **kwargs):
-        msg = None
         for a in args:
             if isinstance(a, Message):
-                msg = a
-                break
-        if msg is None:
-            raise Exception("Message not found!")
-        allowed_langs = (await SettingsDB.get(msg.chat.id)).get()
-        if not allowed_langs:
-            return await Sender.try_reply_or_send_message(msg.chat.id, "Нужно выбрать хотя бы один язык! /settings",
-                                                          reply_to_message_id=msg.message_id)
-        return await fn(*args, **kwargs)
+                allowed_langs = (await SettingsDB.get(a.chat.id)).get()
+                if not allowed_langs:
+                    return await Sender.try_reply_or_send_message(a.chat.id, "Нужно выбрать хотя бы один язык! /settings",
+                                                                  reply_to_message_id=a.message_id)
+                return await fn(*args, **kwargs)
+            elif isinstance(a, types.CallbackQuery):
+                allowed_langs = (await SettingsDB.get(a.from_user.id)).get()
+                if not allowed_langs:
+                    return await Sender.try_reply_or_send_message(a.from_user.id, "Нужно выбрать хотя бы один язык! /settings",
+                                                                  reply_to_message_id=a.message_id)
+                return await fn(*args, **kwargs)
     return wrapper
 
 
@@ -212,8 +217,8 @@ class Sender:
             return
 
         page_count = search_result.count // ELEMENTS_ON_PAGE + (1 if search_result.count % ELEMENTS_ON_PAGE != 0 else 0)
-        msg_text = ''.join(book.to_send_book for book in search_result.books) \
-                   + f'<code>Страница {page}/{page_count}</code>'
+        msg_text = '\n\n\n'.join(book.to_send_book for book in search_result.books) \
+                   + f'\n\n<code>Страница {page}/{page_count}</code>'
         await cls.bot.edit_message_text(msg_text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='HTML',
                                          reply_markup=await get_keyboard(page, page_count, 'b'))
 
@@ -299,7 +304,10 @@ class Sender:
     @need_one_or_more_langs
     async def search_books_by_series(cls, msg: Message, series_id: int, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await SequenceAPI.get_by_id(series_id, (await SettingsDB.get(msg.chat.id)).get(), ELEMENTS_ON_PAGE, page)
+
+        settings = await SettingsDB.get(msg.chat.id)
+
+        search_result = await SequenceAPI.get_by_id(series_id, settings.get(), ELEMENTS_ON_PAGE, page)
 
         if search_result is None:
             await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
@@ -312,15 +320,43 @@ class Sender:
                                                        reply_to_message_id=msg.message_id)
         page_max = search_result.count // ELEMENTS_ON_PAGE + (1 if search_result.count % ELEMENTS_ON_PAGE != 0 else 0)
         msg_text = f"<b>{search_result.name}:</b>\n\n" + \
-                   ''.join([book.to_send_book for book in books]
-                           ) + f'<code>Страница {page}/{page_max}</code>'
+                   '\n\n\n'.join([book.to_send_book for book in books]
+                           ) + f'\n\n<code>Страница {page}/{page_max}</code>'
+
+        if not msg.reply_to_message:
+            keyboard = await get_keyboard(1, page_max, 'bs') 
+        else:
+            keyboard = await get_keyboard(page, page_max, 'bs')
+
+        if settings.beta_testing:
+            if keyboard is None:
+                keyboard = types.InlineKeyboardMarkup()
+            keyboard.row(types.InlineKeyboardButton("Скачать серию", callback_data=f"download_c_{series_id}"))
+
         if not msg.reply_to_message:
             await cls.try_reply_or_send_message(msg.chat.id, msg_text, parse_mode='HTML', 
-                                                reply_markup=await get_keyboard(1, page_max, 'bs'),
+                                                reply_markup=keyboard,
                                                 reply_to_message_id=msg.message_id)
         else:
             await cls.bot.edit_message_text(msg_text, msg.chat.id, msg.message_id, parse_mode='HTML',
-                                             reply_markup=await get_keyboard(page, page_max, 'bs'))
+                                            reply_markup=keyboard)
+
+    @classmethod
+    @need_one_or_more_langs
+    async def send_books_by_series(cls, query: types.CallbackQuery, series_id: int, file_type: str):
+        await query.message.edit_text("Происходит отправка!")
+
+        await cls.bot.send_chat_action(query.from_user.id, 'typing')
+        search_result = await SequenceAPI.get_by_id(series_id, (await SettingsDB.get(query.from_user.id)).get(), 1_000_000, 1)
+
+        if search_result is None or not search_result.books:
+            return
+
+        for book in search_result.books:
+            if book.file_type == "fb2":
+                await Sender.send_book(query.message.reply_to_message, book.id, file_type)
+            else:
+                await Sender.send_book(query.message.reply_to_message, book.id, book.file_type)
 
     @classmethod
     @need_one_or_more_langs
@@ -363,41 +399,72 @@ class Sender:
                                             reply_to_message_id=msg.message_id)
 
     @classmethod
+    async def send_book_detail(cls, msg: Message, book_id: int):
+        book = await BookAPI.get_by_id(book_id)
+
+        if book is None:
+            await msg.reply("Книга не найдена!")
+            return
+
+        keyboard = None
+        if book.annotation_exists:
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(
+                types.InlineKeyboardButton("Посмотреть аннотацию", callback_data=f"b_ann_{book_id}_1")
+            )
+
+        await cls.try_reply_or_send_message(msg.chat.id, book.to_send_book_detail, parse_mode="HTML",
+                                            reply_to_message_id=msg.message_id, reply_markup=keyboard)
+
+    @classmethod
     @need_one_or_more_langs
-    async def send_book_annotation(cls, msg: Message, book_id: int):
+    async def send_book_annotation(cls, msg: Message, book_id: int, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
 
         annotation = await BookAnnotationAPI.get_by_book_id(book_id)
 
         if annotation is None:
             await cls.try_reply_or_send_message(msg.chat.id, "Нет аннотации для этой книги!",
-                                            reply_to_message_id=msg.message_id)
+                                                reply_to_message_id=msg.message_id)
             return
 
-        if annotation.photo_link:
-            msg = await cls.bot.send_photo(msg.chat.id, annotation.photo_link,
-                                            caption=annotation.to_send[:1024], parse_mode="HTML",
-                                            reply_to_message_id=msg.message_id)
-            if len(annotation.to_send) > 1024:
-                i = 1024
-                while annotation.to_send[i:i + 4096]:
-                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                reply_to_message_id=msg.message_id)
-                    i += len(msg.text)
-        else:
-            msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
-                                                        reply_to_message_id=msg.message_id)
-            if len(annotation.to_send) > 4096:
-                i = 4096
-                while annotation.to_send[i:i + 4096]:
-                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                reply_to_message_id=msg.message_id)
-                    i += len(msg.text)
+        msg_parts = split_text(annotation.body)
 
+        text = msg_parts[page-1] + f'\n<code>Страница {page}/{len(msg_parts)}</code>'
+
+        keyboard = await get_keyboard(page, len(msg_parts), f"b_ann_{book_id}", only_one=True)
+        if keyboard is None:
+            keyboard = types.InlineKeyboardMarkup()
+        keyboard.row(
+            types.InlineKeyboardButton("Назад", callback_data=f"book_detail_{book_id}")
+        )
+
+        await cls.bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id,
+                                        parse_mode="HTML", reply_markup=keyboard)
 
     @classmethod
-    @need_one_or_more_langs
+    async def send_book_detail_edit(cls, msg: Message, book_id: int):
+        book = await BookAPI.get_by_id(book_id)
+
+        if book is None:
+            await msg.reply("Книга не найдена!")
+            return
+
+        keyboard = None
+        if book.annotation_exists:
+            keyboard = types.InlineKeyboardMarkup()
+            keyboard.add(
+                types.InlineKeyboardButton("Посмотреть аннотацию", callback_data=f"b_ann_{book_id}_1")
+            )
+
+        await cls.bot.edit_message_text(book.to_send_book_detail, chat_id=msg.chat.id, 
+                                        message_id=msg.message_id, parse_mode="HTML",
+                                        reply_markup=keyboard)
+
+    @classmethod
     async def send_author_annotation(cls, msg: Message, author_id: int):
+        page = 1
+
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
 
         annotation = await AuthorAnnotationAPI.get_by_author_id(author_id)
@@ -406,30 +473,37 @@ class Sender:
                                                 reply_to_message_id=msg.message_id)
             return
 
-        if annotation.photo_link:
-            await cls.try_reply_or_send_photo(msg.chat.id, annotation.photo_link,
-                                                caption=annotation.to_send[:1024], parse_mode="HTML",
-                                                reply_to_message_id=msg.message_id)
-            if len(annotation.to_send) > 1024:
-                i = 1024
-                while annotation.to_send[i:i + 4096]:
-                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                reply_to_message_id=msg.message_id)
-                    i += len(msg.text)
-        else:
-            await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[:4096], parse_mode="HTML",
-                                                reply_to_message_id=msg.message_id)
-            if len(annotation.to_send) > 4096:
-                i = 4096
-                while annotation.to_send[i:i + 4096]:
-                    msg = await cls.try_reply_or_send_message(msg.chat.id, annotation.to_send[i:i+4096], parse_mode="HTML",
-                                                                reply_to_message_id=msg.message_id)
-                    i += len(msg.text)
+        msg_parts = split_text(annotation.body)
 
+        text = msg_parts[page-1] + f'\n\n<code>Страница {page}/{len(msg_parts)}</code>'
+
+        keyboard = await get_keyboard(page, len(msg_parts), f"a_ann_{author_id}", only_one=True)
+
+        await cls.try_reply_or_send_message(msg.chat.id, text,
+                                            reply_to_message_id=msg.message_id, parse_mode="HTML", reply_markup=keyboard)
+
+    @classmethod
+    async def send_author_annotation_edit(cls, msg: Message, author_id: int, page: int):
+        await cls.bot.send_chat_action(msg.chat.id, 'typing')
+
+        annotation = await AuthorAnnotationAPI.get_by_author_id(author_id)
+        if annotation is None:
+            await cls.try_reply_or_send_message(msg.chat.id, "Нет информации для этого автора!",
+                                                reply_to_message_id=msg.message_id)
+            return
+
+        msg_parts = split_text(annotation.body)
+
+        text = msg_parts[page-1] + f'\n\n<code>Страница {page}/{len(msg_parts)}</code>'
+
+        keyboard = await get_keyboard(page, len(msg_parts), f"a_ann_{author_id}", only_one=True)
+
+        await cls.bot.edit_message_text(text, chat_id=msg.chat.id, message_id=msg.message_id,
+                                        parse_mode="HTML", reply_markup=keyboard)
 
     @classmethod
     @need_one_or_more_langs
-    async def send_day_update_log(cls, msg: types.Message, start_date: date, end_date: date, page: int, type_: str):
+    async def send_update_log(cls, msg: types.Message, start_date: date, end_date: date, page: int, type_: str):
         update_log = await UpdateLogAPI.get_by_day(start_date, end_date, (await SettingsDB.get(msg.chat.id)).get(), 7, page)
         if not update_log:
             await cls.bot.edit_message_text('Обновления не найдены!', chat_id=msg.chat.id, message_id=msg.message_id)
@@ -439,8 +513,8 @@ class Sender:
             msg_text = f'Обновления за {start_date.isoformat()}\n\n'
         else:
             msg_text = f'Обновления за {start_date.isoformat()} - {end_date.isoformat()}\n\n'
-        msg_text += ''.join(book.to_send_book for book in update_log.books) \
-                   + f'<code>Страница {page}/{page_count}</code>'
+        msg_text += '\n\n\n'.join(book.to_send_book for book in update_log.books) \
+                   + f'\n\n<code>Страница {page}/{page_count}</code>'
         await cls.bot.edit_message_text(msg_text, chat_id=msg.chat.id, message_id=msg.message_id, parse_mode='HTML',
                                         reply_markup=await get_keyboard(page, page_count, 
                                         f'ul_{type_}_{start_date.isoformat()}_{end_date.isoformat()}'))

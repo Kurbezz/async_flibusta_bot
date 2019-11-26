@@ -1,6 +1,7 @@
 import io
 from typing import List, Optional
 from datetime import date
+import re
 
 import aiohttp
 from aiohttp import ClientTimeout, ServerDisconnectedError
@@ -15,6 +16,9 @@ except ImportError:
 
 
 from config import Config
+
+
+TAG_RE = re.compile(r'<[^>]+>')
 
 
 class Book:
@@ -43,6 +47,10 @@ class Book:
     @property
     def annotation_exists(self):
         return self.obj["annotation_exists"]
+    
+    @property
+    def translators(self):
+        return [Translator(a) for a in self.obj["translators"]] if self.obj.get("translators", None) else []
 
     @property
     def share_markup(self) -> InlineKeyboardMarkup:
@@ -69,8 +77,15 @@ class Book:
     @property
     def to_send_book_without_author(self) -> str:
         res = f'📖 <b>{self.title}</b> | {self.lang}\n'
-        if self.annotation_exists:
-            res += f"Аннотация: /b_info_{self.id}\n"
+        res += f"Информация: /b_info_{self.id}\n"
+
+        if self.translators:
+            res += "Переводчики:\n"
+            for a in self.translators[:5]:
+                res += f'👤 <b>{a.normal_name}</b>\n'
+            if len(self.translators) > 5:
+                res += "  и другие\n"
+
         if self.file_type == 'fb2':
             return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
         else:
@@ -106,20 +121,31 @@ class BookWithAuthor(Book):
 
     @property
     def to_send_book(self) -> str:
-        res = f'📖 <b>{self.title}</b> | {self.lang}\n'
-        if self.annotation_exists:
-            res += f"Аннотация: /b_info_{self.id}\n"
+        res = (f'📖 <b>{self.title}</b> | {self.lang}\n'
+               f'Информация: /b_info_{self.id}\n\n')
+
         if self.authors:
-            for a in self.authors[:15]:
-                res += f'👤 <b>{a.normal_name}</b>\n'
-            if len(self.authors) > 15:
-                res += "  и другие\n\n"
-        else:
-            res += '\n'
+            res += "Авторы:\n"
+            res += ''.join([f'👤 <b>{a.normal_name}</b>\n' for a in self.authors[:7]])
+            if len(self.authors) > 7:
+                res += "  и другие\n"
+        
+        if self.translators:
+            res += "Переводчики:\n"
+            res += ''.join([f'👤 <b>{a.normal_name}</b>\n' for a in self.translators[:5]])
+            if len(self.translators) > 5:
+                res += "  и другие\n"
+        
+        res += "\n"
+
         if self.file_type == 'fb2':
-            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
+            res += (f'⬇ fb2: /fb2_{self.id}\n'
+                    f'⬇ epub: /epub_{self.id}\n'
+                    f'⬇ mobi: /mobi_{self.id}')
         else:
-            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
+            res += f'⬇ {self.file_type}: /{self.file_type}_{self.id}'
+
+        return res
     
     @property
     def short_info(self) -> str:
@@ -140,6 +166,43 @@ class BookWithAuthor(Book):
                           f'⬇ [Скачать mobi]({basic_url + "mobi_" + str(self.id)})')
         else:
             return res + f'⬇ [Скачать {self.file_type}]({basic_url + self.file_type + "_" + str(self.id)})'
+
+
+class BookWithAuthorsAndSequences(BookWithAuthor):
+    def __init__(self, obj: dict):
+        BookWithAuthor.__init__(self, obj)
+    
+    @property
+    def sequences(self) -> List["Sequence"]:
+        return [Sequence(s) for s in self.obj["sequences"]] if self.obj.get("sequences", None) else []
+
+    @property
+    def to_send_book_detail(self) -> str:
+        res = f'📖 <b>{self.title}</b> | {self.lang}\n\n'
+
+        if self.authors:
+            res += "Авторы: \n"
+            for a in self.authors:
+                res += f'👤 <b>{a.normal_name}</b> /a_{a.id}\n'
+            res += "\n"
+
+        if self.translators:
+            res += "Переводчики:\n"
+            for a in self.translators:
+                res += f'👤 <b>{a.normal_name}</b> /t_{a.id}\n'
+            res += '\n'
+
+        if self.sequences:
+            res += "Серии: \n"
+            for s in self.sequences:
+                res += f'📚 <b>{s.name}</b> /s_{s.id} \n'
+            res += "\n"
+
+        res += "Скачать:\n"
+        if self.file_type == 'fb2':
+            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
+        else:
+            return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
 
 
 class BookSearchResult:
@@ -171,11 +234,11 @@ class BookAPI:
             return None
     
     @staticmethod
-    async def get_by_id(book_id: int) -> Optional[BookWithAuthor]:
+    async def get_by_id(book_id: int) -> Optional[BookWithAuthorsAndSequences]:
         async with aiohttp.request("GET", f"{Config.FLIBUSTA_SERVER}/book/{book_id}") as response:
             if response.status != 200:
                 return None
-            return BookWithAuthor(await response.json())
+            return BookWithAuthorsAndSequences(await response.json())
 
     @staticmethod
     async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[BookSearchResult]:
@@ -194,6 +257,61 @@ class BookAPI:
             if response.status != 200:
                 return None
             return BookWithAuthor(await response.json())
+
+
+class Translator:
+    def __init__(self, obj: dict):
+        self.obj = obj
+
+    @property
+    def id(self):
+        return self.obj["id"]
+
+    @property
+    def first_name(self):
+        return self.obj["first_name"]
+
+    @property
+    def last_name(self):
+        return self.obj["last_name"]
+
+    @property
+    def middle_name(self):
+        return self.obj["middle_name"]
+
+    @property
+    def normal_name(self) -> str:
+        temp = ''
+        if self.last_name:
+            temp = self.last_name
+        if self.first_name:
+            if temp:
+                temp += " "
+            temp += self.first_name
+        if self.middle_name:
+            if temp:
+                temp += " "
+            temp += self.middle_name
+        return temp
+
+    @property
+    def short(self) -> str:
+        temp = ''
+        if self.last_name:
+            temp += self.last_name
+        if self.first_name:
+            if temp:
+                temp += " "
+            temp += self.first_name[0]
+        if self.middle_name:
+            if temp:
+                temp += " "
+            temp += self.middle_name[0]
+        return temp
+
+    @property
+    def to_send(self) -> str:
+        return f'👤 <b>{self.normal_name}</b>\n/tr_{self.id}\n\n'
 
 
 class Author:
@@ -430,19 +548,13 @@ class BookAnnotation:
 
     @property
     def body(self):
-        return self.obj.get("body", "").replace('<p class="book">', "").replace('</p>', "").replace(
-            "<p class=book>", "").replace("<a>", "").replace("</a>", "").replace("</A>", "").replace(
-            "[b]", "").replace("[/b]", "")
+        return TAG_RE.sub('', self.obj.get("body", ""))
 
     @property
     def photo_link(self):
         if not self.obj.get("file"):
             return None
         return f"https://flibusta.is/ib/{self.obj['file']}"
-
-    @property
-    def to_send(self):
-        return f"{self.title} {self.body}"
 
 
 class BookAnnotationAPI:
@@ -468,19 +580,13 @@ class AuthorAnnotation:
 
     @property
     def body(self):
-        return self.obj.get("body", "").replace('<p class="book">', "").replace('</p>', "").replace(
-            "<p class=book>", "").replace("<a>", "").replace("</a>", "").replace("</A>", "").replace(
-            "[b]", "").replace("[/b]", "")
+        return TAG_RE.sub('', self.obj.get("body", "")).replace("[b]", "").replace("[/b]", "").replace("\n\n\n", "\n\n")
 
     @property
     def photo_link(self):
         if not self.obj.get("file"):
             return None
         return f"https://flibusta.is/ia/{self.obj['file']}"
-
-    @property
-    def to_send(self):
-        return f"{self.title} {self.body}"
 
 
 class AuthorAnnotationAPI:

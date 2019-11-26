@@ -11,7 +11,7 @@ from config import Config
 from flibusta_server import BookAPI
 from send import Sender
 from db import TelegramUserDB, SettingsDB, prepare_db
-from utils import ignore, make_settings_keyboard
+from utils import ignore, make_settings_keyboard, make_settings_lang_keyboard, download_by_series_keyboard, beta_testing_keyboard
 
 
 bot = Bot(token=Config.BOT_TOKEN)
@@ -21,8 +21,7 @@ Sender.configure(bot)
 
 
 @dp.message_handler(commands=["start"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def start_handler(msg: types.Message):
     await TelegramUserDB.create_or_update(msg)
     try:
@@ -35,43 +34,70 @@ async def start_handler(msg: types.Message):
 
 
 @dp.message_handler(commands=["help"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def help_handler(msg: types.Message):
     async with analytics.Analyze("help", msg):
         await msg.reply(strings.help_msg)
 
 
 @dp.message_handler(commands=["commands"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def help_commands_handler(msg: types.Message):
     async with analytics.Analyze("commands", msg):
         await msg.reply(strings.commands_msg)
 
 
 @dp.message_handler(commands=["info"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def info_handler(msg: types.Message):
     async with analytics.Analyze("info", msg):
         await msg.reply(strings.info_msg, disable_web_page_preview=True)
 
 
 @dp.message_handler(commands=["settings"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def settings(msg: types.Message):
     async with analytics.Analyze("settings", msg):
         await TelegramUserDB.create_or_update(msg)
-        await msg.reply("Настройки: ", reply_markup=await make_settings_keyboard(msg.from_user.id))
+        await msg.reply("Настройки: ", reply_markup=await make_settings_keyboard())
+
+
+@dp.message_handler(commands=["beta_functions"])
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def beta_test_functions(msg: types.Message):
+    async with analytics.Analyze("beta_test_functions", msg):
+        await TelegramUserDB.create_or_update(msg)
+        await msg.reply(
+"""
+Функции на тестировании:
+
+1. Загрузка всех книг серии
+Выбирается приоритетный формат для загрузки. 
+Загружаются все книги в выбранном формате, если нет возможности загрузить в этом формате, то загружается в доступном.
+"""
+        )
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^settings_main$"))
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def settings_main(query: types.CallbackQuery):
+    async with analytics.Analyze("settings_main", query):
+        await TelegramUserDB.create_or_update(query)
+        await query.message.edit_text("Настройки:", reply_markup=await make_settings_keyboard())
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^langs_settings$"))
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def lang_setup(query: types.CallbackQuery):
+    async with analytics.Analyze("lang_settings", query):
+        await TelegramUserDB.create_or_update(query)
+        await query.message.edit_text("Языки:", reply_markup=await make_settings_lang_keyboard(query.from_user.id))
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r"^(ru|uk|be)_(on|off)$"))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-async def lang_setup(query: types.CallbackQuery):
-    async with analytics.Analyze("settings_change", query):
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def lang_setup_changer(query: types.CallbackQuery):
+    async with analytics.Analyze("lang_settings_change", query):
         await TelegramUserDB.create_or_update(query)
         settings = await SettingsDB.get(query.from_user.id)
         lang, set_ = query.data.split('_')
@@ -82,9 +108,34 @@ async def lang_setup(query: types.CallbackQuery):
         if lang == "ru":
             settings.allow_ru = (set_ == "on")
         await SettingsDB.update(settings)
-        keyboard = await make_settings_keyboard(query.from_user.id)
-        await bot.edit_message_reply_markup(chat_id=query.message.chat.id, message_id=query.message.message_id,
-                                            reply_markup=keyboard)
+        await query.message.edit_reply_markup(await make_settings_lang_keyboard(query.from_user.id))
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^beta_testing$"))
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def beta_testing_menu(query: types.CallbackQuery):
+    async with analytics.Analyze("beta_testing_menu", query):
+        await TelegramUserDB.create_or_update(query)
+        await query.message.edit_text(
+            "Бета тест \n(список функций на тестировании /beta_functions ):", 
+            reply_markup=await beta_testing_keyboard(query.from_user.id)
+        )
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^beta_test_(on|off)$"))
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
+async def beta_testing_choose(query: types.CallbackQuery):
+    async with analytics.Analyze("beta_testing_choose", query):
+        await TelegramUserDB.create_or_update(query)
+        settings = await SettingsDB.get(query.from_user.id)
+        new_status = query.data.replace("beta_test_", "")
+        if new_status == "on":
+            settings.beta_testing = True
+        else:
+            settings.beta_testing = False
+        await SettingsDB.update(settings)
+        await query.message.edit_reply_markup(await beta_testing_keyboard(query.from_user.id))
+
 
 
 @dp.message_handler(regexp=re.compile('^/a_([0-9]+)$'))
@@ -144,19 +195,37 @@ async def donation(msg: types.Message):
 @dp.message_handler(regexp=re.compile('^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
 @ignore(exceptions.BotBlocked)
 @dp.async_task
-async def get_book_handler(msg: types.Message):
+async def download_book(msg: types.Message):
     async with analytics.Analyze("download", msg):
         file_type, book_id = msg.text.replace('/', '').split('_')
         await Sender.send_book(msg, int(book_id), file_type)
 
 
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^download_c_([0-9]+)$"))
+async def send_download_by_serial_keyboard(query: types.CallbackQuery):
+    async with analytics.Analyze("download_by_serial_keyboard", query):
+        series_id = int(query.data.replace("download_c_", ""))
+        await query.message.edit_text(
+            "Скачать серию: ", 
+            reply_markup=await download_by_series_keyboard(series_id)
+        )
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^download_c_(fb2|epub|mobi)_([0-9]+)$"))
+@dp.async_task
+async def download_books_by_series(query: types.CallbackQuery):
+    async with analytics.Analyze("download_series", query):
+        file_type, series_id = query.data.replace("download_c_", "").split("_")
+        await Sender.send_books_by_series(query, int(series_id), file_type)
+
+
 @dp.message_handler(regexp=re.compile("^/b_info_[0-9]+$"))
 @ignore(exceptions.BotBlocked)
 @ignore(exceptions.BadRequest)
-async def get_book_annotation(msg: types.Message):
-    async with analytics.Analyze("book_annotation", msg):
+async def get_book_detail(msg: types.Message):
+    async with analytics.Analyze("book_detail", msg):
         book_id = int(msg.text.split("/b_info_")[1])
-        await Sender.send_book_annotation(msg, book_id)
+        await Sender.send_book_detail(msg, book_id)
 
 
 @dp.message_handler(regexp=re.compile("^/a_info_[0-9]+$"))
@@ -232,6 +301,43 @@ async def get_books_by_series(callback: types.CallbackQuery):
                                             int(callback.data.split('_')[1]))
 
 
+@dp.callback_query_handler(CallbackDataRegExFilter(r'^b_ann_([0-9]+)_([0-9]+)'))
+@ignore(exceptions.BotBlocked)
+@ignore(exceptions.BadRequest)
+@ignore(exceptions.MessageCantBeEdited)
+async def get_book_annotation(callback: types.CallbackQuery):
+    async with analytics.Analyze("get_book_annotation", callable):
+        msg: types.Message = callback.message
+        if not msg.reply_to_message or not msg.reply_to_message.text:
+            return await msg.reply("Ошибка :( Попробуйте еще раз!")
+        book_id, page = callback.data.replace("b_ann_", "").split("_")
+        await TelegramUserDB.create_or_update(msg.reply_to_message)
+        await Sender.send_book_annotation(msg, int(book_id), int(page))
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r'^a_ann_([0-9]+)_([0-9]+)'))
+@ignore(exceptions.BotBlocked)
+@ignore(exceptions.BadRequest)
+@ignore(exceptions.MessageCantBeEdited)
+async def get_author_annotation_update(callback: types.CallbackQuery):
+    async with analytics.Analyze("get_author_annotation", callable):
+        msg: types.Message = callback.message
+        if not msg.reply_to_message or not msg.reply_to_message.text:
+            return await msg.reply("Ошибка :( Попробуйте еще раз!")
+        author, page = callback.data.replace("a_ann_", "").split("_")
+        await TelegramUserDB.create_or_update(msg.reply_to_message)
+        await Sender.send_author_annotation_edit(msg, int(author), int(page))
+
+
+@dp.callback_query_handler(CallbackDataRegExFilter(r'^book_detail_([0-9]+)'))
+@ignore(exceptions.BotBlocked)
+@ignore(exceptions.BadRequest)
+async def get_book_detail_callback(callback: types.CallbackQuery):
+    async with analytics.Analyze("book_detail", callback):
+        book_id = int(callback.data.replace("book_detail_", ""))
+        await Sender.send_book_detail_edit(callback.message, book_id)
+
+
 @dp.callback_query_handler(CallbackDataRegExFilter('remove_cache'))
 @ignore(exceptions.BotBlocked)
 @ignore(exceptions.BadRequest)
@@ -269,7 +375,7 @@ async def get_day_update_log_range(callback: types.CallbackQuery):
         msg: types.Message = callback.message
         type_, raw_start_date, raw_end_date, page = callback.data[3:].split("_")
         await TelegramUserDB.create_or_update(callback)
-        await Sender.send_day_update_log(msg, date.fromisoformat(raw_start_date), date.fromisoformat(raw_end_date), int(page), type_)
+        await Sender.send_update_log(msg, date.fromisoformat(raw_start_date), date.fromisoformat(raw_end_date), int(page), type_)
 
 
 @dp.message_handler(IsTextMessageFilter())
