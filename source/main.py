@@ -67,15 +67,7 @@ async def settings(msg: types.Message):
 async def beta_test_functions(msg: types.Message):
     async with analytics.Analyze("beta_test_functions", msg):
         await TelegramUserDB.create_or_update(msg)
-        await msg.reply(
-"""
-Функции на тестировании:
-
-1. Загрузка всех книг серии
-Выбирается приоритетный формат для загрузки. 
-Загружаются все книги в выбранном формате, если нет возможности загрузить в этом формате, то загружается в доступном.
-"""
-        )
+        await msg.reply("Нет")
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r"^settings_main$"))
@@ -139,9 +131,7 @@ async def beta_testing_choose(query: types.CallbackQuery):
 
 
 @dp.message_handler(regexp=re.compile('^/a_([0-9]+)$'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.BotBlocked, exceptions.MessageCantBeEdited, exceptions.BadRequest))
 async def search_books_by_author(msg: types.Message):
     async with analytics.Analyze("get_books_by_author", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -149,8 +139,7 @@ async def search_books_by_author(msg: types.Message):
 
 
 @dp.message_handler(regexp=re.compile('^/s_([0-9]+)$'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked))
 async def search_book_by_series(msg: types.Message):
     async with analytics.Analyze("get_book_by_series", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -158,8 +147,7 @@ async def search_book_by_series(msg: types.Message):
 
 
 @dp.message_handler(commands=['random_book'])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_random_book(msg: types.Message):
     async with analytics.Analyze("get_random_book", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -167,8 +155,7 @@ async def get_random_book(msg: types.Message):
 
 
 @dp.message_handler(commands=['random_author'])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def get_random_author(msg: types.Message):
     async with analytics.Analyze("get_random_author", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -176,8 +163,7 @@ async def get_random_author(msg: types.Message):
 
 
 @dp.message_handler(commands=["random_series"])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def get_random_series(msg: types.Message):
     async with analytics.Analyze("get_random_series", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -185,16 +171,15 @@ async def get_random_series(msg: types.Message):
 
 
 @dp.message_handler(commands=['donate'])
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BotBlocked, exceptions.BadRequest))
 async def donation(msg: types.Message):
     async with analytics.Analyze("donation", msg):
         await msg.reply(strings.donate_msg, parse_mode='HTML')
 
 
 @dp.message_handler(regexp=re.compile('^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
-@ignore(exceptions.BotBlocked)
 @dp.async_task
+@ignore(exceptions.BotBlocked)
 async def download_book(msg: types.Message):
     async with analytics.Analyze("download", msg):
         file_type, book_id = msg.text.replace('/', '').split('_')
@@ -206,7 +191,7 @@ async def send_download_by_serial_keyboard(query: types.CallbackQuery):
     async with analytics.Analyze("download_by_serial_keyboard", query):
         series_id = int(query.data.replace("download_c_", ""))
         await query.message.edit_text(
-            "Скачать серию: ", 
+            strings.choose_priority_format,
             reply_markup=await download_by_series_keyboard(series_id)
         )
 
@@ -220,8 +205,7 @@ async def download_books_by_series(query: types.CallbackQuery):
 
 
 @dp.message_handler(regexp=re.compile("^/b_info_[0-9]+$"))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_book_detail(msg: types.Message):
     async with analytics.Analyze("book_detail", msg):
         book_id = int(msg.text.split("/b_info_")[1])
@@ -229,8 +213,7 @@ async def get_book_detail(msg: types.Message):
 
 
 @dp.message_handler(regexp=re.compile("^/a_info_[0-9]+$"))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_author_annotation(msg: types.Message):
     async with analytics.Analyze("author_annotation", msg):
         author_id = int(msg.text.split("/a_info_")[1])
@@ -238,9 +221,7 @@ async def get_author_annotation(msg: types.Message):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^b_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.BotBlocked, exceptions.MessageCantBeEdited, exceptions.BadRequest))
 async def search_books_by_title(callback: types.CallbackQuery):
     async with analytics.Analyze("search_book_by_title", callback):
         msg: types.Message = callback.message
@@ -250,9 +231,7 @@ async def search_books_by_title(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^a_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def search_authors(callback: types.CallbackQuery):
     async with analytics.Analyze("search_authors", callback):
         msg: types.Message = callback.message
@@ -262,9 +241,7 @@ async def search_authors(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter('^s_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def search_series(callback: types.CallbackQuery):
     async with analytics.Analyze("search_series", callback):
         msg: types.Message = callback.message
@@ -274,9 +251,7 @@ async def search_series(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^ba_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_books_by_author(callback: types.CallbackQuery):
     async with analytics.Analyze("get_books_by_author", callback):
         msg: types.Message = callback.message
@@ -288,9 +263,7 @@ async def get_books_by_author(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^bs_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_books_by_series(callback: types.CallbackQuery):
     async with analytics.Analyze("get_books_by_series", callback):
         msg: types.Message = callback.message
@@ -302,9 +275,7 @@ async def get_books_by_series(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^b_ann_([0-9]+)_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_book_annotation(callback: types.CallbackQuery):
     async with analytics.Analyze("get_book_annotation", callable):
         msg: types.Message = callback.message
@@ -316,9 +287,7 @@ async def get_book_annotation(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^a_ann_([0-9]+)_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
-@ignore(exceptions.MessageCantBeEdited)
+@ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_author_annotation_update(callback: types.CallbackQuery):
     async with analytics.Analyze("get_author_annotation", callable):
         msg: types.Message = callback.message
@@ -330,8 +299,7 @@ async def get_author_annotation_update(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^book_detail_([0-9]+)'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_book_detail_callback(callback: types.CallbackQuery):
     async with analytics.Analyze("book_detail", callback):
         book_id = int(callback.data.replace("book_detail_", ""))
@@ -339,8 +307,7 @@ async def get_book_detail_callback(callback: types.CallbackQuery):
 
 
 @dp.callback_query_handler(CallbackDataRegExFilter('remove_cache'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def remove_cache(callback: types.CallbackQuery):
     async with analytics.Analyze("remove_cache", callback):
         await bot.send_message(callback.from_user.id, strings.cache_removed)
@@ -379,8 +346,7 @@ async def get_day_update_log_range(callback: types.CallbackQuery):
 
 
 @dp.message_handler(IsTextMessageFilter())
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.BadRequest)
+@ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def search(msg: types.Message):
     async with analytics.Analyze("new_search_query", msg):
         await TelegramUserDB.create_or_update(msg)
@@ -396,8 +362,7 @@ async def search(msg: types.Message):
 
 
 @dp.inline_handler(InlineQueryRegExFilter(r'^share_([\d]+)$'))
-@ignore(exceptions.BotBlocked)
-@ignore(exceptions.InvalidQueryID)
+@ignore((exceptions.InvalidQueryID, exceptions.BotBlocked))
 async def share_book(query: types.InlineQuery):
     async with analytics.Analyze("share_book", query):
         book_id = int(query.query.split("_")[1])

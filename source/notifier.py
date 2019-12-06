@@ -14,7 +14,7 @@ class Notifier:
     async def run_notify_loop(self):
         while self.run:
             await self.bot.send_chat_action(self.chat_id, self.notification_type)
-            await asyncio.sleep(3)
+            await asyncio.sleep(1)
 
     async def __aenter__(self):
         self.task = asyncio.create_task(self.run_notify_loop())

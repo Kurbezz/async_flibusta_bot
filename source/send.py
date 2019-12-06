@@ -302,7 +302,7 @@ class Sender:
 
     @classmethod
     @need_one_or_more_langs
-    async def search_books_by_series(cls, msg: Message, series_id: int, page: int):
+    async def search_books_by_series(cls, msg: Message, series_id: int, page: int, after_download: bool = False):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
 
         settings = await SettingsDB.get(msg.chat.id)
@@ -328,10 +328,14 @@ class Sender:
         else:
             keyboard = await get_keyboard(page, page_max, 'bs')
 
-        if settings.beta_testing:
-            if keyboard is None:
-                keyboard = types.InlineKeyboardMarkup()
-            keyboard.row(types.InlineKeyboardButton("Скачать серию", callback_data=f"download_c_{series_id}"))
+        if keyboard is None:
+            keyboard = types.InlineKeyboardMarkup()
+        
+        if not after_download:
+            keyboard.row(types.InlineKeyboardButton("⬇️ Скачать серию", callback_data=f"download_c_{series_id}"))
+        else:
+            keyboard.row(types.InlineKeyboardButton("✅ Книги отправляются!", 
+                                                    callback_data=f"download_c_{series_id}"))
 
         if not msg.reply_to_message:
             await cls.try_reply_or_send_message(msg.chat.id, msg_text, parse_mode='HTML', 
@@ -344,19 +348,20 @@ class Sender:
     @classmethod
     @need_one_or_more_langs
     async def send_books_by_series(cls, query: types.CallbackQuery, series_id: int, file_type: str):
-        await query.message.edit_text("Происходит отправка!")
+        await cls.search_books_by_series(query.message, series_id, 1, after_download=True)
 
         await cls.bot.send_chat_action(query.from_user.id, 'typing')
-        search_result = await SequenceAPI.get_by_id(series_id, (await SettingsDB.get(query.from_user.id)).get(), 1_000_000, 1)
+        search_result = await SequenceAPI.get_by_id(series_id, (await SettingsDB.get(query.from_user.id)).get(), 
+                                                    1_000_000, 1)
 
         if search_result is None or not search_result.books:
             return
 
         for book in search_result.books:
             if book.file_type == "fb2":
-                await Sender.send_book(query.message.reply_to_message, book.id, file_type)
+                await cls.send_book(query.message, book.id, file_type)
             else:
-                await Sender.send_book(query.message.reply_to_message, book.id, book.file_type)
+                await cls.send_book(query.message, book.id, book.file_type)
 
     @classmethod
     @need_one_or_more_langs

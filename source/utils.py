@@ -86,7 +86,7 @@ async def make_settings_keyboard() -> types.InlineKeyboardMarkup:
     keyboard = types.InlineKeyboardMarkup()
 
     keyboard.row(types.InlineKeyboardButton("Языки", callback_data="langs_settings"))
-    keyboard.row(types.InlineKeyboardButton("Бета тест", callback_data="beta_testing"))
+    # keyboard.row(types.InlineKeyboardButton("Бета тест", callback_data="beta_testing"))
 
     return keyboard
 
@@ -112,7 +112,7 @@ class BytesResult(io.BytesIO):
         self._name = value
 
 
-def split_text(text: str) -> List[str]:  # ToDO: fix bugs
+def split_text(text: str) -> List[str]:
     parts = []
     i = 0
 
@@ -121,10 +121,22 @@ def split_text(text: str) -> List[str]:  # ToDO: fix bugs
             parts.append(text[i:len(text) + 1])
             break
         else:
-            new_i = max(text.rfind(".", i, i + 2048), text.rfind("!", i, i + 2048))
-            parts.append(text[i:new_i + 1])
-            if new_i == i:
+            new_i = max(
+                text.rfind(".", i, i + 2048),
+                text.rfind("!", i, i + 2048),
+                text.rfind("?", i, i + 2048),
+            )
+
+            if new_i == -1:
+                new_i = text.rfind("\n", i, i + 2048)
+            
+            if new_i == -1:
+                new_i = min(i + 2048, len(text))
+
+            if new_i == i or new_i == -1:
                 break
+
+            parts.append(text[i:new_i + 1])
             i = new_i
 
     return parts
