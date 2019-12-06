@@ -110,11 +110,18 @@ class BookWithAuthor(Book):
     def caption(self) -> str:
         if not self.authors:
             return "📖 " + self.title
+            
+        result = "📖 " + self.title + '\n\n' + '\n'.join(["👤 " + author.normal_name for author in self.authors])
 
-        authors_text = '\n'.join(["👤 " + author.normal_name for author in self.authors[:15]])
-        if len(self.authors) > 15:
-            authors_text += "\n" + "и т.д."
-        return "📖 " + self.title + '\n\n' + authors_text
+        if len(result) <= 1024:
+            return result
+
+        i = len(self.authors)
+        while len(result) > 1024:
+            i -= 1
+            result = "📖 " + self.title + '\n\n' + \
+                '\n'.join(["👤 " + author.normal_name for author in self.authors[:i]]) + "\n и т.д."
+        return result
 
     def download_caption(self, file_type) -> str:
         return self.caption + f'\n\n⬇ <a href="{self.get_public_download_link(file_type)}">Скачать</a>'
@@ -136,7 +143,8 @@ class BookWithAuthor(Book):
             if len(self.translators) > 5:
                 res += "  и другие\n"
         
-        res += "\n"
+        if self.authors or self.translators:
+            res += "\n"
 
         if self.file_type == 'fb2':
             res += (f'⬇ fb2: /fb2_{self.id}\n'
