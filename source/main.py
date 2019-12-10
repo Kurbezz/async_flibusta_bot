@@ -1,5 +1,5 @@
 import re
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 from aiogram import Bot, Dispatcher, types, filters, exceptions
 from aiogram.utils.executor import start_webhook
@@ -322,10 +322,11 @@ async def remove_cache(callback: types.CallbackQuery):
 async def get_update_log_message(msg: types.Message):
     async with analytics.Analyze("get_update_log_message", msg):
         await TelegramUserDB.create_or_update(msg)
-        end_date = (date.today() - timedelta(days=1)).isoformat()
-        start_date_3 = (date.today() - timedelta(days=4)).isoformat()
-        start_date_7 = (date.today() - timedelta(days=8)).isoformat()
-        start_date_30 = (date.today() - timedelta(days=31)).isoformat()
+        end_date_t = date.today() if datetime.now().hour <= 5 else date.today() - timedelta(days=1)
+        end_date = end_date_t.isoformat()
+        start_date_3 = (end_date_t - timedelta(days=4)).isoformat()
+        start_date_7 = (end_date_t - timedelta(days=8)).isoformat()
+        start_date_30 = (end_date_t - timedelta(days=31)).isoformat()
         keyboard = types.InlineKeyboardMarkup(row_width=1)
         keyboard.add(
             types.InlineKeyboardButton("За 1 день", callback_data=f"ul_d_{end_date}_{end_date}_1"),
