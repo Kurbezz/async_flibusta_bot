@@ -322,7 +322,7 @@ async def remove_cache(callback: types.CallbackQuery):
 async def get_update_log_message(msg: types.Message):
     async with analytics.Analyze("get_update_log_message", msg):
         await TelegramUserDB.create_or_update(msg)
-        end_date_t = date.today() if datetime.now().hour <= 5 else date.today() - timedelta(days=1)
+        end_date_t = date.today() if datetime.now().hour >= 4 else date.today() - timedelta(days=1)
         end_date = end_date_t.isoformat()
         start_date_3 = (end_date_t - timedelta(days=4)).isoformat()
         start_date_7 = (end_date_t - timedelta(days=8)).isoformat()
