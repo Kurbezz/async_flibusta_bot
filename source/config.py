@@ -17,7 +17,7 @@ class Config:
     FLIBUSTA_SERVER: str
     FLIBUSTA_SERVER_PUBLIC: str
 
-    FLIBUSTA_CHANNEL_SERVER: str
+    FLIBUSTA_CHANNEL_SERVER: Optional[str]
 
     WEBHOOK_PORT: int
     WEBHOOK_HOST: str
@@ -34,14 +34,16 @@ class Config:
 
     @classmethod
     def configurate(cls, token: str, bot_name: str,
-                 db_password: str,
-                 flibusta_server_public: str,
-                 server_port: int,
-                 chatbase_api_key: Optional[str] = None,
-                 webhook_port: int = 8443, server_host: str = "localhost",
-                 flibusta_server: str = "http://localhost:7770",
-                 flibusta_channel_server: str = "http://localhost:7080",
-                 db_host: str = "localhost", db_port: int = 5432):
+                    db_password: str,
+                    server_port: int,
+                    flibusta_server: str,
+                    flibusta_server_public: str,
+                    server_host: str = "localhost",
+                    webhook_port: int = 8443,
+                    db_host: str = "localhost", 
+                    db_port: int = 5432,
+                    chatbase_api_key: Optional[str] = None,
+                    flibusta_channel_server: Optional[str] = None):
         cls.BOT_TOKEN = token
         cls.BOT_NAME = bot_name
         

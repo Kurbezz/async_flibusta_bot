@@ -87,6 +87,8 @@ def need_one_or_more_langs(fn):
 
 
 async def get_book_from_channel(book_id: int, file_type: str):
+    if not Config.FLIBUSTA_CHANNEL_SERVER:
+        return None
     async with aiohttp.ClientSession() as session:
         async with session.get(f"{Config.FLIBUSTA_CHANNEL_SERVER}/get_message_id/{book_id}/{file_type}") as response:
             return await response.json()
