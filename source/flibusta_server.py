@@ -424,7 +424,10 @@ class AuthorAPI:
                 f"{Config.FLIBUSTA_SERVER}/author/{author_id}/{json.dumps(allowed_langs)}/{limit}/{page}") as response:
             if response.status != 200:
                 return None
-            return AuthorWithBooks(await response.json())
+            response_json = await response.json()
+            if response_json["result"] is None:
+                return None
+            return AuthorWithBooks(response_json)
 
     @staticmethod
     async def search(query: str, allowed_langs: List[str], limit: int, page: int) -> Optional[AuthorSearchResult]:
