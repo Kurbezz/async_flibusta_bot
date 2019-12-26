@@ -31,7 +31,8 @@ class Analyze:
         pass
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await analyze(self.intent, self.obj, self.reply_msg)
+        if Config.CHATBASE_API_KEY:
+            await analyze(self.intent, self.obj, self.reply_msg)
 
 
 async def analyze(intent, obj, reply_msg=None):

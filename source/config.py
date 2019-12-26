@@ -28,7 +28,7 @@ class Config:
     REDIS_HOST: str
     REDIS_PASSWORD: str
 
-    CHATBASE_API_KEY: str
+    CHATBASE_API_KEY: Optional[str]
 
     DSN: str
 
@@ -37,7 +37,7 @@ class Config:
                  db_password: str,
                  flibusta_server_public: str,
                  server_port: int,
-                 chatbase_api_key: str,
+                 chatbase_api_key: Optional[str] = None,
                  webhook_port: int = 8443, server_host: str = "localhost",
                  flibusta_server: str = "http://localhost:7770",
                  flibusta_channel_server: str = "http://localhost:7080",
