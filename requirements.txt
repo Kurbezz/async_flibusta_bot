@@ -1,8 +1,5 @@
-ujson
-django
-psycopg2
-pyTelegramBotAPI
-requests[socks]
-transliterate
+asyncpg
+aiogram
 aiohttp
+transliterate
 chatbase
