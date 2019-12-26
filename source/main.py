@@ -319,14 +319,15 @@ async def remove_cache(callback: types.CallbackQuery):
 
 @dp.message_handler(commands=['update_log'])
 @ignore(exceptions.BotBlocked)
+@ignore(exceptions.BadRequest)
 async def get_update_log_message(msg: types.Message):
     async with analytics.Analyze("get_update_log_message", msg):
         await TelegramUserDB.create_or_update(msg)
-        end_date_t = date.today() if datetime.now().hour >= 4 else date.today() - timedelta(days=1)
+        end_date_t = date.today() - timedelta(days=1)
         end_date = end_date_t.isoformat()
-        start_date_3 = (end_date_t - timedelta(days=4)).isoformat()
-        start_date_7 = (end_date_t - timedelta(days=8)).isoformat()
-        start_date_30 = (end_date_t - timedelta(days=31)).isoformat()
+        start_date_3 = (end_date_t - timedelta(days=2)).isoformat()
+        start_date_7 = (end_date_t - timedelta(days=6)).isoformat()
+        start_date_30 = (end_date_t - timedelta(days=30)).isoformat()
         keyboard = types.InlineKeyboardMarkup(row_width=1)
         keyboard.add(
             types.InlineKeyboardButton("За 1 день", callback_data=f"ul_d_{end_date}_{end_date}_1"),
