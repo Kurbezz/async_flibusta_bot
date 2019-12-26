@@ -26,12 +26,17 @@ IOS: [@flibusta_new_copy_rebot](https://www.t.me/flibusta_new_copy_rebot)
 
 ## Настройка
 ### 1. Настройка бота
-1. Создать бота у [@BotFather](https://www.t.me/BotFather)
+1.1 Создать бота у [@BotFather](https://www.t.me/BotFather)
+1.2 Получить токен
 ### 2. Настройка БД
-1. Установить и настроить PostgreSQL
-2. Создать пользователя и бд в соотвествии с username бота
+2.1 Установить и настроить PostgreSQL
+2.2 Создать пользователя и бд в соотвествии с username бота
 ### 3. Установить и настроить [flibusta server](https://github.com/Kurbezz/flibusta_server)
 ### 4. Установка зависимостей
-1. Установить зависимости из requirements.txt
+4.1 Установить зависимости из requirements.txt
+4.2 (Опционально, для большей производительности) Установить зависимости из optional-requirements.txt
+### 5. Настроить Nginx
+5.1 Установить Nginx
+5.2 Настроить по [шаблону](https://github.com/Kurbezz/nginx_config_examples/blob/master/examples/bot.conf)
 ## 5. Запуск
-Запустить main.py передавая настройки в аргументах
+5.1 Запустить main.py передавая конфигурацию в аргументах
