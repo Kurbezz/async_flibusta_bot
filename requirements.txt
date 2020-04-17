@@ -2,4 +2,7 @@ asyncpg
 aiogram
 aiohttp
 transliterate
-chatbase
+git+git://github.com/google/chatbase-python.git
+ujson
+uvloop
+aioify

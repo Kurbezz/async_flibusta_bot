@@ -277,7 +277,7 @@ async def get_books_by_series(callback: types.CallbackQuery):
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^b_ann_([0-9]+)_([0-9]+)'))
 @ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_book_annotation(callback: types.CallbackQuery):
-    async with analytics.Analyze("get_book_annotation", callable):
+    async with analytics.Analyze("get_book_annotation", callback):
         msg: types.Message = callback.message
         if not msg.reply_to_message or not msg.reply_to_message.text:
             return await msg.reply("Ошибка :( Попробуйте еще раз!")
@@ -289,7 +289,7 @@ async def get_book_annotation(callback: types.CallbackQuery):
 @dp.callback_query_handler(CallbackDataRegExFilter(r'^a_ann_([0-9]+)_([0-9]+)'))
 @ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def get_author_annotation_update(callback: types.CallbackQuery):
-    async with analytics.Analyze("get_author_annotation", callable):
+    async with analytics.Analyze("get_author_annotation", callback):
         msg: types.Message = callback.message
         if not msg.reply_to_message or not msg.reply_to_message.text:
             return await msg.reply("Ошибка :( Попробуйте еще раз!")

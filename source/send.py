@@ -18,6 +18,7 @@ from flibusta_server import BookWithAuthor
 from db import PostedBook, PostedBookDB, SettingsDB
 from utils import split_text
 
+
 ELEMENTS_ON_PAGE = 7
 BOOKS_CHANGER = 5
 
