@@ -1,6 +1,5 @@
 from typing import Optional
-
-import fire
+import os
 
 
 class Config:
@@ -33,38 +32,30 @@ class Config:
     DSN: str
 
     @classmethod
-    def configurate(cls, token: str, bot_name: str,
-                    db_password: str,
-                    server_port: int,
-                    flibusta_server: str,
-                    flibusta_server_public: str,
-                    server_host: str = "localhost",
-                    webhook_port: int = 8443,
-                    db_host: str = "localhost", 
-                    db_port: int = 5432,
-                    chatbase_api_key: Optional[str] = None,
-                    flibusta_channel_server: Optional[str] = None):
-        cls.BOT_TOKEN = token
-        cls.BOT_NAME = bot_name
+    def configurate(cls):
+        cls.BOT_TOKEN = os.environ['BOT_TOKEN']
+        cls.BOT_NAME = os.environ['BOT_NAME']
         
-        cls.DB_NAME = cls.DB_USER = bot_name
-        cls.DB_PASSWORD = db_password
-        cls.DB_HOST = db_host
-        cls.DB_PORT = db_port
+        cls.DB_NAME = os.environ.get('DB_NAME', cls.BOT_NAME)
+        cls.DB_USER = os.environ.get('DB_USER', cls.BOT_NAME)
+        cls.DB_PASSWORD = os.environ['DB_PASSWORD']
+        cls.DB_HOST = os.environ.get('DB_HOST', 'localhost')
+        cls.DB_PORT = os.environ.get('DB_PORT', 5432)
+
         cls.DSN = f"postgresql://{cls.DB_HOST}:5432/{cls.DB_USER}"
 
-        cls.FLIBUSTA_SERVER = flibusta_server
-        cls.FLIBUSTA_SERVER_PUBLIC = flibusta_server_public
+        cls.FLIBUSTA_SERVER = os.environ['FLIBUSTA_SERVER']
+        cls.FLIBUSTA_SERVER_PUBLIC = os.environ['FLIBUSTA_SERVER_PUBLIC']
 
-        cls.FLIBUSTA_CHANNEL_SERVER = flibusta_channel_server
+        cls.FLIBUSTA_CHANNEL_SERVER = os.environ.get('FLIBUSTA_CHANNEL_SERVER', None)
 
-        cls.WEBHOOK_PORT = webhook_port
+        cls.WEBHOOK_PORT = os.environ['WEBHOOK_PORT']
         cls.WEBHOOK_HOST = f"https://kurbezz.ru:{cls.WEBHOOK_PORT}/{cls.BOT_NAME}"
 
-        cls.SERVER_HOST = server_host
-        cls.SERVER_PORT = server_port
+        cls.SERVER_HOST = os.environ.get('SERVER_HOST', 'localhost')
+        cls.SERVER_PORT = os.environ['SERVER_PORT']
 
-        cls.CHATBASE_API_KEY = chatbase_api_key
+        cls.CHATBASE_API_KEY = os.environ.get('CHATBASE_API_KEY', None)
 
 
-fire.Fire(Config.configurate)
+Config.configurate()
