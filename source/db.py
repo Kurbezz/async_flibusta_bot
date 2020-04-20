@@ -10,7 +10,8 @@ from config import Config
 
 async def prepare_db():
     pool = await asyncpg.create_pool(user=Config.DB_USER, password=Config.DB_PASSWORD,
-                                     database=Config.DB_NAME, host=Config.DB_HOST)
+                                     database=Config.DB_NAME, host=Config.DB_HOST,
+                                     port=Config.DB_PORT)
 
     for _class in [TablesCreator, TelegramUserDB, SettingsDB, PostedBookDB]:  # type: Type[ConfigurableDB]
         _class.configurate(pool)
