@@ -50,7 +50,7 @@ class Config:
         cls.FLIBUSTA_CHANNEL_SERVER = os.environ.get('FLIBUSTA_CHANNEL_SERVER', None)
 
         cls.WEBHOOK_PORT = os.environ['WEBHOOK_PORT']
-        cls.WEBHOOK_HOST = f"https://kurbezz.ru:{cls.WEBHOOK_PORT}/{cls.BOT_NAME}"
+        cls.WEBHOOK_HOST = os.environ['WEBHOOK_HOST'] # f"https://kurbezz.ru:{cls.WEBHOOK_PORT}/{cls.BOT_NAME}"
 
         cls.SERVER_HOST = os.environ.get('SERVER_HOST', 'localhost')
         cls.SERVER_PORT = os.environ['SERVER_PORT']
