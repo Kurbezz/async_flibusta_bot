@@ -69,7 +69,7 @@ def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove chars that
 
 
 def normalize_input(input: str) -> str:
-    return input.replace('ё', 'е')
+    return input.replace('ё', 'е').replace('Ё', 'Е')
 
 
 def need_one_or_more_langs(fn):
