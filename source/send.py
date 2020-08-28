@@ -54,7 +54,7 @@ async def get_keyboard(page: int, pages_count: int, keyboard_type: str,
     return keyboard
 
 
-async def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove chars that don't accept in Telegram Bot API
+def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove chars that don't accept in Telegram Bot API
     filename = '_'.join([a.short for a in book.authors]) + '_-_' if book.authors else ''
     filename += book.title if book.title[-1] != ' ' else book.title[:-1]
     filename = transliterate.translit(filename, 'ru', reversed=True)
@@ -66,6 +66,10 @@ async def normalize(book: BookWithAuthor, file_type: str) -> str:  # remove char
         filename = filename.replace(c, r)
 
     return filename + '.' + file_type
+
+
+def normalize_input(input: str) -> str:
+    return input.replace('ё', 'е')
 
 
 def need_one_or_more_langs(fn):
@@ -190,7 +194,7 @@ class Sender:
                     )
                     await DownloadAPI.update(book_id, msg.chat.id)
                     return
-                book_bytes.name = await normalize(book, file_type)
+                book_bytes.name = normalize(book, file_type)
                 try:
                     send_response = await cls.bot.send_document(msg.chat.id, book_bytes,
                                                                 reply_to_message_id=msg.message_id,
@@ -206,9 +210,12 @@ class Sender:
     @need_one_or_more_langs
     async def search_books(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await BookAPI.search(msg.reply_to_message.text,
-                                          (await SettingsDB.get(msg.chat.id)).get(), 
-                                          ELEMENTS_ON_PAGE, page)
+        search_result = await BookAPI.search(
+            normalize_input(msg.reply_to_message.text),
+            (await SettingsDB.get(msg.chat.id)).get(), 
+            ELEMENTS_ON_PAGE,
+            page
+        )
 
         if search_result is None:
             await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
@@ -229,9 +236,11 @@ class Sender:
     @need_one_or_more_langs
     async def search_authors(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        search_result = await AuthorAPI.search(msg.reply_to_message.text, 
-                                            (await SettingsDB.get(msg.chat.id)).get(), 
-                                            ELEMENTS_ON_PAGE, page)
+        search_result = await AuthorAPI.search(
+            normalize_input(msg.reply_to_message.text), 
+            (await SettingsDB.get(msg.chat.id)).get(), 
+            ELEMENTS_ON_PAGE, page
+        )
 
         if search_result is None:
             await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
@@ -284,9 +293,12 @@ class Sender:
     @need_one_or_more_langs
     async def search_series(cls, msg: Message, page: int):
         await cls.bot.send_chat_action(msg.chat.id, 'typing')
-        sequences_result = await SequenceAPI.search(msg.reply_to_message.text, 
-                                                 (await SettingsDB.get(msg.chat.id)).get(), 
-                                                 ELEMENTS_ON_PAGE, page)
+        sequences_result = await SequenceAPI.search(
+            normalize_input(msg.reply_to_message.text), 
+            (await SettingsDB.get(msg.chat.id)).get(), 
+            ELEMENTS_ON_PAGE, 
+            page
+        )
 
         if sequences_result is None:
             await cls.bot.edit_message_text('Произошла ошибка :( Попробуйте позже', 
