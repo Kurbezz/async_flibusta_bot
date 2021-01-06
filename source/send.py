@@ -172,8 +172,8 @@ class Sender:
 
                 if book_on_channel is not None:
                     try:
-                        send_response = await cls.bot.forward_message(msg.chat.id, book_on_channel["channel_id"], 
-                                                                      book_on_channel["message_id"])
+                        send_response = await cls.bot.copy_message(msg.chat.id, book_on_channel["channel_id"], 
+                                                                   book_on_channel["message_id"])
                         await DownloadAPI.update(book_id, msg.chat.id)
                         return
                     except exceptions.MessageToForwardNotFound:

@@ -130,7 +130,7 @@ async def beta_testing_choose(query: types.CallbackQuery):
 
 
 
-@dp.message_handler(regexp=re.compile('^/a_([0-9]+)$'))
+@dp.message_handler(regexp=re.compile(r'^/a_([0-9]+)$'))
 @ignore((exceptions.BotBlocked, exceptions.MessageCantBeEdited, exceptions.BadRequest))
 async def search_books_by_author(msg: types.Message):
     async with analytics.Analyze("get_books_by_author", msg):
@@ -138,7 +138,7 @@ async def search_books_by_author(msg: types.Message):
         await Sender.search_books_by_author(msg, int(msg.text.split('_')[1]), 1)
 
 
-@dp.message_handler(regexp=re.compile('^/s_([0-9]+)$'))
+@dp.message_handler(regexp=re.compile(r'^/s_([0-9]+)$'))
 @ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked))
 async def search_book_by_series(msg: types.Message):
     async with analytics.Analyze("get_book_by_series", msg):
@@ -177,7 +177,7 @@ async def donation(msg: types.Message):
         await msg.reply(strings.donate_msg, parse_mode='HTML')
 
 
-@dp.message_handler(regexp=re.compile('^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
+@dp.message_handler(regexp=re.compile(r'^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
 @dp.async_task
 @ignore(exceptions.BotBlocked)
 async def download_book(msg: types.Message):
@@ -204,7 +204,7 @@ async def download_books_by_series(query: types.CallbackQuery):
         await Sender.send_books_by_series(query, int(series_id), file_type)
 
 
-@dp.message_handler(regexp=re.compile("^/b_info_[0-9]+$"))
+@dp.message_handler(regexp=re.compile(r"^/b_info_[0-9]+$"))
 @ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_book_detail(msg: types.Message):
     async with analytics.Analyze("book_detail", msg):
@@ -212,7 +212,7 @@ async def get_book_detail(msg: types.Message):
         await Sender.send_book_detail(msg, book_id)
 
 
-@dp.message_handler(regexp=re.compile("^/a_info_[0-9]+$"))
+@dp.message_handler(regexp=re.compile(r"^/a_info_[0-9]+$"))
 @ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def get_author_annotation(msg: types.Message):
     async with analytics.Analyze("author_annotation", msg):
@@ -240,7 +240,7 @@ async def search_authors(callback: types.CallbackQuery):
         await Sender.search_authors(msg, int(callback.data.split('_')[1]))
 
 
-@dp.callback_query_handler(CallbackDataRegExFilter('^s_([0-9]+)'))
+@dp.callback_query_handler(CallbackDataRegExFilter(r'^s_([0-9]+)'))
 @ignore((exceptions.MessageCantBeEdited, exceptions.BotBlocked, exceptions.BadRequest))
 async def search_series(callback: types.CallbackQuery):
     async with analytics.Analyze("search_series", callback):
@@ -306,7 +306,7 @@ async def get_book_detail_callback(callback: types.CallbackQuery):
         await Sender.send_book_detail_edit(callback.message, book_id)
 
 
-@dp.callback_query_handler(CallbackDataRegExFilter('remove_cache'))
+@dp.callback_query_handler(CallbackDataRegExFilter(r'^remove_cache$'))
 @ignore((exceptions.BadRequest, exceptions.BotBlocked))
 async def remove_cache(callback: types.CallbackQuery):
     async with analytics.Analyze("remove_cache", callback):
@@ -338,7 +338,9 @@ async def get_update_log_message(msg: types.Message):
         await msg.reply("Обновления за: ", reply_markup=keyboard)
 
 
-@dp.callback_query_handler(CallbackDataRegExFilter('^ul_[dtwm]_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9])+$'))
+@dp.callback_query_handler(CallbackDataRegExFilter(
+    r'^ul_[dtwm]_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9])+$')
+)
 async def get_day_update_log_range(callback: types.CallbackQuery):
     async with analytics.Analyze("get_update_log", callback):
         msg: types.Message = callback.message
