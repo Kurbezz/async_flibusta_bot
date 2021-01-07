@@ -312,6 +312,8 @@ async def remove_cache(callback: types.CallbackQuery):
     async with analytics.Analyze("remove_cache", callback):
         await bot.send_message(callback.from_user.id, strings.cache_removed)
         reply_to: types.Message = callback.message.reply_to_message
+        if reply_to is None:
+            return
         file_type, book_id = reply_to.text.replace('/', '').split('_')
         await Sender.remove_cache(file_type, int(book_id))
         await Sender.send_book(reply_to, int(book_id), file_type)
