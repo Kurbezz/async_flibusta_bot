@@ -177,7 +177,7 @@ async def donation(msg: types.Message):
         await msg.reply(strings.donate_msg, parse_mode='HTML')
 
 
-@dp.message_handler(regexp=re.compile(r'^/(fb2|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
+@dp.message_handler(regexp=re.compile(r'^/(fb2|fb2\+zip|epub|mobi|djvu|pdf|doc)_[0-9]+$'))
 @dp.async_task
 @ignore(exceptions.BotBlocked)
 async def download_book(msg: types.Message):
@@ -196,7 +196,7 @@ async def send_download_by_serial_keyboard(query: types.CallbackQuery):
         )
 
 
-@dp.callback_query_handler(CallbackDataRegExFilter(r"^download_c_(fb2|epub|mobi)_([0-9]+)$"))
+@dp.callback_query_handler(CallbackDataRegExFilter(r"^download_c_(fb2|fb2\+zip|epub|mobi)_([0-9]+)$"))
 @dp.async_task
 async def download_books_by_series(query: types.CallbackQuery):
     async with analytics.Analyze("download_series", query):

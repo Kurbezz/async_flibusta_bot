@@ -56,7 +56,7 @@ async def make_settings_lang_keyboard(user_id: int) -> types.InlineKeyboardMarku
 async def download_by_series_keyboard(series_id: int) -> types.InlineKeyboardMarkup:
     keyboard = types.InlineKeyboardMarkup()
 
-    for file_type in ["fb2", "epub", "mobi"]:
+    for file_type in ["fb2", "fb2+zip", "epub", "mobi"]:
         keyboard.row(types.InlineKeyboardButton(file_type, callback_data=f"download_c_{file_type}_{series_id}"))
 
     return keyboard

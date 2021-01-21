@@ -78,7 +78,12 @@ class Book:
                 res += "  и другие\n"
 
         if self.file_type == 'fb2':
-            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
+            return res + (
+                f'⬇ fb2: /fb2_{self.id}\n'
+                f'⬇ fb2+zip: /fb2+zip_{self.id}\n'
+                f'⬇ epub: /epub_{self.id}\n'
+                f'⬇ mobi: /mobi_{self.id}\n\n'
+            )
         else:
             return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
 
@@ -139,6 +144,7 @@ class BookWithAuthor(Book):
 
         if self.file_type == 'fb2':
             res += (f'⬇ fb2: /fb2_{self.id}\n'
+                    f'⬇ fb2+zip: /fb2+zip_{self.id}\n'
                     f'⬇ epub: /epub_{self.id}\n'
                     f'⬇ mobi: /mobi_{self.id}')
         else:
@@ -161,6 +167,7 @@ class BookWithAuthor(Book):
             res += '\n'
         if self.file_type == 'fb2':
             return res + (f'⬇ [Скачать fb2]({basic_url + "fb2_" + str(self.id)}) \n'
+                          f'⬇ [Скачать fb2+zip]({basic_url + "fb2+zip_" + str(self.id)}) \n'
                           f'⬇ [Скачать epub]({basic_url + "epub_" + str(self.id)}) \n'
                           f'⬇ [Скачать mobi]({basic_url + "mobi_" + str(self.id)})')
         else:
@@ -199,7 +206,12 @@ class BookWithAuthorsAndSequences(BookWithAuthor):
 
         res += "Скачать:\n"
         if self.file_type == 'fb2':
-            return res + f'⬇ fb2: /fb2_{self.id}\n⬇ epub: /epub_{self.id}\n⬇ mobi: /mobi_{self.id}\n\n'
+            return res + (
+                f'⬇ fb2: /fb2_{self.id}\n'
+                f'⬇ fb2+zip: /fb2+zip_{self.id}\n'
+                f'⬇ epub: /epub_{self.id}\n'
+                f'⬇ mobi: /mobi_{self.id}\n\n'
+            )
         else:
             return res + f'⬇ {self.file_type}: /{self.file_type}_{self.id}\n\n'
 
