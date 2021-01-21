@@ -56,15 +56,6 @@ class Book:
     def share_markup(self) -> InlineKeyboardMarkup:
         markup = InlineKeyboardMarkup(row_width=1)
         markup.add(
-            InlineKeyboardButton("Не открывается!", callback_data=f"remove_cache"),
-            InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
-        )
-        return markup
-
-    @property
-    def share_markup_without_cache(self) -> InlineKeyboardMarkup:
-        markup = InlineKeyboardMarkup(row_width=1)
-        markup.add(
             InlineKeyboardButton("Поделиться", switch_inline_query=f"share_{self.id}")
         )
         return markup

@@ -109,6 +109,7 @@ def need_one_or_more_langs(fn):
                         allow_sending_without_reply=True
                     )
                 return await fn(*args, **kwargs)
+        return await fn(*args, **kwargs)
     return wrapper
 
 
@@ -117,8 +118,19 @@ async def get_book_from_channel(book_id: int, file_type: str):
         return None
     async with aiohttp.ClientSession() as session:
         async with session.get(
-                f"{Config.FLIBUSTA_CHANNEL_SERVER}/"
-                f"get_message_id/{book_id}/{file_type}"
+            f"{Config.FLIBUSTA_CHANNEL_SERVER}/"
+            f"get_message_id/{book_id}/{file_type}"
+        ) as response:
+            return await response.json()
+
+
+async def delete_book_from_channel(message_id: int):
+    if not Config.FLIBUSTA_CHANNEL_SERVER:
+        return None
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{Config.FLIBUSTA_CHANNEL_SERVER}/"
+            f"delete_message_id/{message_id}"
         ) as response:
             return await response.json()
 
@@ -155,8 +167,10 @@ class Sender:
                     )
                     await DownloadAPI.update(book_id, msg.chat.id)
                     return
-                except exceptions.MessageToForwardNotFound:
-                    pass
+                except exceptions.BadRequest:
+                    await delete_book_from_channel(
+                        book_on_channel['message_id']
+                    )
 
             pb = await PostedBookDB.get(book_id, file_type)
             if pb:
